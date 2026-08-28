@@ -149,7 +149,7 @@ mode:
 
 ```ts
 const { data } = await new QueryEngine()
-  .explainPaths(query, { sources: [ 'https://example.org/data.ttl' ]}, 'physical');
+  .explainPaths(query, { sources: [ 'https://example.org/sparql' ]}, 'physical');
 console.log(data);
 ```
 
@@ -161,14 +161,34 @@ paths(bfs)
   paths-via
     distinct
       join
-        join-inner(bind-source) ...
+        join-inner(bind-source) cardReal:1 timeSelf:0.174ms timeLife:8.01ms
+          values cardEst:1
+          pattern (?from https://example.org/edge ?to) cardEst:~∞ src:0
   paths-end
-    ...
+    distinct
+      join
+        join-inner(bind-source) timeSelf:0.022ms timeLife:2.33ms
+          values cardEst:1
+          pattern (?end https://example.org/type https://example.org/Dest) cardEst:~∞ src:0
+  paths-via
+    distinct
+      join
+        join-inner(bind-source) cardReal:1 timeSelf:0.05ms timeLife:1.792ms
+          values cardEst:1
+          pattern (?from https://example.org/edge ?to) cardEst:~∞ src:0
+  ...
+
+sources:
+  0: QuerySourceHypermedia(https://example.org/sparql)(SkolemID:0)
 ```
 
 Every clause and every traversal depth is its own node beneath the path query, so the plan shows
-which physical join each depth chose and against which source. A physical explanation runs the
-traversal to completion, exactly as Comunica's own physical-explain actor does.
+which physical join each depth chose and against which source. `bind-source` above means the
+frontier reached the endpoint as a `VALUES` block inside the request; a local source would show
+`bind` or `nested-loop` instead, chosen by the same mediator from the same cardinalities.
+`physical-json` reports the same tree with each clause node labelled by its `depth`, which the
+compact rendering above leaves out. A physical explanation runs the traversal to completion,
+exactly as Comunica's own physical-explain actor does.
 
 ## Execution model
 
@@ -176,11 +196,13 @@ traversal to completion, exactly as Comunica's own physical-explain actor does.
 2. Evaluate START and stream its distinct nodes into the initial frontier.
 3. Expand the whole frontier for a depth as one `VALUES` relation joined with the planned VIA
    pattern, letting the RDF-join mediator choose and chunk the physical join.
-4. Stream VIA solutions immediately while building the next breadth-first frontier.
+4. Consume VIA solutions incrementally as they arrive, building the next frontier as they stream
+   in rather than buffering a depth's response.
 5. Test candidate nodes against END in one mediated join per depth, and cache the result.
 6. For `shortest`, retain per-start distances and predecessor DAGs so every start/end pair gets
-   all of its shortest paths. For `all`, enumerate simple paths with explicit resource limits so
-   cycles cannot run forever.
+   all of its shortest paths. For `all`, enumerate simple paths: a node cannot repeat except to
+   close a cycle back to its own start, which bounds traversal on a cyclic graph on its own, with
+   `MAX LENGTH` and `LIMIT` as further explicit bounds.
 7. Propagate cancellation and downstream backpressure to every active Comunica stream.
 
 Breadth-first depth is the only orchestration barrier: it is needed to know that a discovered
@@ -263,9 +285,9 @@ same arrangement Comunica uses on its own query-process bus.
 ## Status
 
 The programmatic API supports streaming `shortest`, `all`, and cyclic execution, including
-maximum length, limit, offset, and cancellation. Both the textual PATHS adapter and the
-optional standard-SPARQL SERVICE envelope are implemented. There is one execution route: the
-configured Components.js actor graph.
+maximum length, limit, offset, cancellation, and `parsed`, `physical`, and `physical-json`
+explanations. Both the textual PATHS adapter and the optional standard-SPARQL SERVICE envelope
+are implemented. There is one execution route: the configured Components.js actor graph.
 
 ## Development
 
