@@ -119,6 +119,65 @@ describe('Components.js path engine', () => {
     assert.ok(paths[0].startBindings.get('stamp').equals(paths[0].endBindings.get('stamp')));
   });
 
+  it('pushes frontier bindings into SPARQL endpoint graph patterns', async () => {
+    const endpointQueries = [];
+    const fetch = async(input, init = {}) => {
+      const url = new URL(typeof input === 'string' ? input : input.url);
+      let query = url.searchParams.get('query');
+      if (!query && typeof init.body === 'string') {
+        query = new URLSearchParams(init.body).get('query');
+      }
+      assert.ok(query, 'expected a SPARQL query in the endpoint request');
+      endpointQueries.push(query);
+
+      let vars;
+      let bindings;
+      if (query.includes(`<${EX}edge>`)) {
+        vars = [ 'from', 'to' ];
+        bindings = query.includes(`<${EX}d>`) ? [] : [
+          {
+            from: { type: 'uri', value: `${EX}a` },
+            to: { type: 'uri', value: `${EX}d` },
+          },
+          {
+            from: { type: 'uri', value: `${EX}a` },
+            to: { type: 'bnode', value: 'remote-result' },
+          },
+          {
+            from: { type: 'uri', value: `${EX}a` },
+            to: { type: 'uri', value: `${EX}d` },
+          },
+        ];
+      } else if (query.includes('?start')) {
+        vars = [ 'start' ];
+        bindings = [{ start: { type: 'uri', value: `${EX}a` } }];
+      } else {
+        vars = [ 'end' ];
+        bindings = [{ end: { type: 'uri', value: `${EX}d` } }];
+      }
+      return new Response(JSON.stringify({
+        head: { vars },
+        results: { bindings },
+      }), {
+        headers: { 'content-type': 'application/sparql-results+json' },
+      });
+    };
+
+    const paths = await collect(new QueryEngine().queryPaths(spec({ mode: 'all', maxDepth: 2 }), {
+      sources: [{ type: 'sparql', value: `${EX}sparql` }],
+      fetch,
+    }));
+
+    assert.deepEqual(paths.map(nodePath), [ 'a-d' ], endpointQueries.join('\n---\n'));
+    assert.equal(endpointQueries.length, 2, endpointQueries.join('\n---\n'));
+    for (const viaQuery of endpointQueries) {
+      assert.match(viaQuery, /VALUES\s+\?from/iu);
+      assert.doesNotMatch(viaQuery, /\{\s*SELECT\b/iu);
+      assert.doesNotMatch(viaQuery, /\bDISTINCT\b/iu);
+      assert.doesNotMatch(viaQuery, /_:/u, 'remote blank nodes must not be sent back in VALUES');
+    }
+  });
+
   it('rejects algorithms not handled by the bundled BFS actor', async () => {
     const engine = new QueryEngine();
     const sources = [ source(`<${EX}a> <${EX}edge> <${EX}d> .`, 'algorithm') ];
