@@ -105,6 +105,7 @@
               }
             ]
           },
+          "default": "Path querying failed: none of the configured actors accepted the request",
           "comment": "The message that will be configured in the bus for reporting failures.  This message may be a template string that contains references to the executed `action`. For example, the following templated string is allowed: \"RDF dereferencing failed: no actors could handle ${action.handle.mediaType}\""
         },
         {

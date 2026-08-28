@@ -21,7 +21,9 @@ export type MediatorQueryPath = Mediate<IActionQueryPath, IActorQueryPathOutput>
 export abstract class ActorQueryPath<TS = undefined>
   extends Actor<IActionQueryPath, IActorTest, IActorQueryPathOutput, TS> {
   /**
-   * @param args - @defaultNested {<default_bus> a <cc:components/Bus.jsonld#Bus>} bus
+   * @param args -
+   *   \ @defaultNested {<default_bus> a <cc:components/Bus.jsonld#Bus>} bus
+   *   \ @defaultNested {Path querying failed: none of the configured actors accepted the request} busFailMessage
    */
   public constructor(args: IActorQueryPathArgs<TS>) {
     super(args);
