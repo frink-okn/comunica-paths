@@ -6,10 +6,14 @@ import type { SparqlVariable } from './types.js';
 const parser = new Parser({ sparqlStar: true });
 const generator = new Generator({ sparqlStar: true });
 
-export function compilePattern(prologue: string | undefined, pattern: string): SelectQuery {
+export function compilePattern(
+  prologue: string | undefined,
+  pattern: string,
+  dataset?: string,
+): SelectQuery {
   let parsed;
   try {
-    parsed = parser.parse(`${prologue ?? ''}\nSELECT DISTINCT * WHERE {\n${pattern}\n}`);
+    parsed = parser.parse(`${prologue ?? ''}\nSELECT DISTINCT * ${dataset ?? ''} WHERE {\n${pattern}\n}`);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     throw new InvalidPathQueryError(`Invalid SPARQL graph pattern: ${message}`);
@@ -38,6 +42,18 @@ export function compileValuesQuery(
 
 export function compileQuery(template: SelectQuery): string {
   return generator.stringify(template);
+}
+
+export function validateSparqlVariable(variable: string, label: string): void {
+  try {
+    const parsed = parser.parse(`SELECT ${variable} WHERE { }`);
+    const selected = parsed.type === 'query' && parsed.queryType === 'SELECT' ? parsed.variables[0] : undefined;
+    if (!selected || !('termType' in selected) || selected.termType !== 'Variable') {
+      throw new Error('not a variable');
+    }
+  } catch {
+    throw new InvalidPathQueryError(`${label} must be a valid SPARQL variable`);
+  }
 }
 
 function assertValuesTerm(term: Term): void {

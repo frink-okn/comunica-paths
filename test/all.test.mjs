@@ -66,8 +66,20 @@ describe('all and cyclic path execution', () => {
     const engine = new PathQueryEngine(new QueryEngine());
     const paths = await collect(engine.queryPaths(spec({
       end: { node: '?end' },
-      mode: 'cyclic',
+      cyclic: true,
       maxDepth: 4,
+    }), { sources }));
+
+    assert.deepEqual(paths.map(nodePath), [ 'a-b-d-e-a', 'a-c-d-e-a' ]);
+  });
+
+  it('combines CYCLIC with shortest-path selection', async () => {
+    const engine = new PathQueryEngine(new QueryEngine());
+    const paths = await collect(engine.queryPaths(spec({
+      end: { node: '?end' },
+      mode: 'shortest',
+      cyclic: true,
+      maxDepth: 6,
     }), { sources }));
 
     assert.deepEqual(paths.map(nodePath), [ 'a-b-d-e-a', 'a-c-d-e-a' ]);
@@ -146,4 +158,3 @@ function namedNode(value) {
     },
   };
 }
-

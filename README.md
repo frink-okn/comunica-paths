@@ -60,13 +60,25 @@ blank nodes, language strings, datatypes, and RDF-star terms cannot collide.
 
 ## Syntax
 
-The core API accepts `PathQuerySpec`. A Stardog-compatible PATHS parser will be an adapter
-that parses only the PATHS envelope and delegates START, END, and VIA graph patterns to
-stock SPARQL tooling. A standard-SPARQL `SERVICE` envelope may be added as a second adapter;
-neither representation changes the executor.
+The core API accepts `PathQuerySpec`. `parsePathQuery` and `queryPathString` accept PATHS
+syntax while parsing only its small outer envelope. START, END, and VIA graph patterns are
+parsed by stock SPARQL.js and executed by Comunica:
+
+```sparql
+PREFIX ex: <https://example.org/>
+PATHS ALL
+START ?from = ex:a
+END ?to { ?to a ex:Destination }
+VIA { ?from ex:edge ?to }
+MAX LENGTH 8
+LIMIT 20
+```
+
+A standard-SPARQL `SERVICE` envelope is planned as a second adapter; neither representation
+changes the executor.
 
 ## Status
 
-The programmatic API supports batched, streaming `shortest`, `all`, and `cyclic` execution,
-including `maxDepth`, `maxPaths`, `offset`, and cancellation. Textual PATHS syntax and the
-optional standard-SPARQL envelope are the next implementation stages.
+The programmatic API supports batched, streaming `shortest`, `all`, and cyclic execution,
+including maximum length, limit, offset, and cancellation. The textual PATHS adapter is
+implemented; the optional standard-SPARQL envelope is the next implementation stage.

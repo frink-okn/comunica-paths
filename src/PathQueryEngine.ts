@@ -4,7 +4,8 @@ import type { Bindings, Term } from '@rdfjs/types';
 import type { SelectQuery } from 'sparqljs';
 import { compatibleBindings, getBinding } from './bindings.js';
 import { InvalidPathQueryError, PathQueryCancelledError } from './errors.js';
-import { compilePattern, compileQuery, compileValuesQuery } from './sparql.js';
+import { compilePattern, compileQuery, compileValuesQuery, validateSparqlVariable } from './sparql.js';
+import { parsePathQuery } from './syntax.js';
 import type {
   BindingsQueryEngine,
   IPathQueryEngine,
@@ -87,7 +88,7 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
       return;
     }
 
-    const traversal = spec.mode === 'all' || spec.mode === 'cyclic' ?
+    const traversal = spec.mode === 'all' ?
       this.queryAll(spec, templates, context, options.signal) :
       this.queryShortest(spec, templates, context, options.signal);
     const offset = spec.offset ?? 0;
@@ -107,6 +108,14 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
         return;
       }
     }
+  }
+
+  public queryPathString(
+    query: string,
+    context?: QueryContext,
+    options?: PathQueryExecutionOptions,
+  ): AsyncIterable<PathResult> {
+    return this.queryPaths(parsePathQuery(query), context, options);
   }
 
   private async *queryShortest(
@@ -222,9 +231,9 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
 
   private compileTemplates(spec: PathQuerySpec): QueryTemplates {
     return {
-      start: spec.start.pattern?.trim() ? compilePattern(spec.prologue, spec.start.pattern) : undefined,
-      end: spec.end.pattern?.trim() ? compilePattern(spec.prologue, spec.end.pattern) : undefined,
-      via: compilePattern(spec.prologue, spec.via.pattern),
+      start: spec.start.pattern?.trim() ? compilePattern(spec.prologue, spec.start.pattern, spec.dataset) : undefined,
+      end: spec.end.pattern?.trim() ? compilePattern(spec.prologue, spec.end.pattern, spec.dataset) : undefined,
+      via: compilePattern(spec.prologue, spec.via.pattern, spec.dataset),
     };
   }
 
@@ -383,13 +392,15 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
       signal,
     );
 
-    for (const state of layer.states) {
-      const endpoint = matches.get(state.node);
-      if (!endpoint || !endpointVariablesCompatible(spec, state.root, state.node)) {
-        continue;
-      }
-      for (const path of reconstructShortestPaths(state.root, state.node, predecessors)) {
-        yield* combineEndpointBindings(path, roots.get(state.root), endpoint);
+    if (!spec.cyclic) {
+      for (const state of layer.states) {
+        const endpoint = matches.get(state.node);
+        if (!endpoint || !endpointVariablesCompatible(spec, state.root, state.node)) {
+          continue;
+        }
+        for (const path of reconstructShortestPaths(state.root, state.node, predecessors)) {
+          yield* combineEndpointBindings(path, roots.get(state.root), endpoint);
+        }
       }
     }
     for (const cycle of layer.cycles) {
@@ -493,7 +504,7 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
       signal,
     );
 
-    if (spec.mode !== 'cyclic') {
+    if (!spec.cyclic) {
       for (const state of layer.paths) {
         const endpoint = matches.get(state.current);
         if (!endpoint || !endpointVariablesCompatible(spec, state.root, state.current)) {
@@ -627,7 +638,7 @@ function validateSpec(spec: PathQuerySpec): void {
   if (!spec.via.pattern.trim()) {
     throw new InvalidPathQueryError('VIA pattern must not be empty');
   }
-  if (spec.mode !== undefined && ![ 'shortest', 'all', 'cyclic' ].includes(spec.mode)) {
+  if (spec.mode !== undefined && ![ 'shortest', 'all' ].includes(spec.mode)) {
     throw new InvalidPathQueryError(`Unknown path query mode: ${String(spec.mode)}`);
   }
   for (const [ name, value ] of [
@@ -642,9 +653,7 @@ function validateSpec(spec: PathQuerySpec): void {
 }
 
 function validateVariable(variable: string, label: string): void {
-  if (!/^[?$][A-Za-z_][A-Za-z0-9_]*$/u.test(variable)) {
-    throw new InvalidPathQueryError(`${label} must be a SPARQL variable such as ?node`);
-  }
+  validateSparqlVariable(variable, label);
 }
 
 function requireBinding(bindings: Bindings, variable: SparqlVariable, clause: string): Term {

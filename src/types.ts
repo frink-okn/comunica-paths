@@ -21,22 +21,26 @@ export interface PathViaPattern {
   to: SparqlVariable;
 }
 
-export type PathQueryMode = 'shortest' | 'all' | 'cyclic';
+export type PathQueryMode = 'shortest' | 'all';
 
 /**
  * Parser-independent representation of a path query.
  *
- * Every embedded pattern remains standard SPARQL. A Stardog-compatible parser
- * can translate its surface syntax into this type without changing SPARQL.js,
+ * Every embedded pattern remains standard SPARQL. A textual PATHS parser can
+ * translate its surface syntax into this type without changing SPARQL.js,
  * sparqlalgebrajs, RDF/JS, or Comunica's algebra.
  */
 export interface PathQuerySpec {
   /** PREFIX and BASE declarations shared by all generated standard queries. */
   prologue?: string;
+  /** Standard FROM and FROM NAMED clauses shared by all generated queries. */
+  dataset?: string;
   start: PathEndpointPattern;
   end: PathEndpointPattern;
   via: PathViaPattern;
   mode?: PathQueryMode;
+  /** Restrict results to simple cycles. */
+  cyclic?: boolean;
   /** A safety bound for otherwise unbounded traversals. Zero permits no edges. */
   maxDepth?: number;
   /** Stop after emitting this many paths. Zero emits none. */
@@ -90,6 +94,11 @@ export interface PathQueryExecutionOptions {
 export interface IPathQueryEngine<QueryContext = unknown> {
   queryPaths(
     spec: PathQuerySpec,
+    context?: QueryContext,
+    options?: PathQueryExecutionOptions,
+  ): AsyncIterable<PathResult>;
+  queryPathString(
+    query: string,
     context?: QueryContext,
     options?: PathQueryExecutionOptions,
   ): AsyncIterable<PathResult>;
