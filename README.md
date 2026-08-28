@@ -27,7 +27,7 @@ const query = {
 
 The executor compiles each traversal frontier into ordinary SPARQL and submits
 it through the injected engine's `queryBindings` method. That makes stock Comunica and other
-configured Comunica engines usable without coupling this package to their Components.js 
+configured Comunica engines usable without coupling this package to their Components.js
 configuration.
 
 ```ts
@@ -55,8 +55,13 @@ for await (const path of paths) {
    limits so cycles cannot run forever.
 6. Propagate cancellation and downstream backpressure to every active Comunica stream.
 
-RDF terms will be keyed and serialised as complete RDF terms—not by `.value`—so named nodes,
-blank nodes, language strings, datatypes, and RDF-star terms cannot collide.
+RDF terms are keyed with RDF/JS term-aware collections—not by `.value`—so named nodes,
+blank nodes, language strings, datatypes, and RDF-star terms cannot collide in traversal state.
+
+Blank-node identity cannot be carried from one independent SPARQL request to the next with
+`VALUES`. A blank node may occur in retained edge bindings, but traversal fails explicitly if
+one must become a later frontier or be tested by an END pattern. This avoids silently treating
+a query blank-node label as an identity token.
 
 ## Syntax
 
@@ -104,3 +109,14 @@ and VIA bindings queries.
 The programmatic API supports batched, streaming `shortest`, `all`, and cyclic execution,
 including maximum length, limit, offset, and cancellation. Both the textual PATHS adapter
 and the optional standard-SPARQL SERVICE envelope are implemented.
+
+## Development
+
+```bash
+npm install
+npm test
+```
+
+The default suite is deterministic and uses two local RDF sources through an unchanged
+Comunica engine. `npm run test:live` additionally checks a bounded two-hop query against a
+public LDF endpoint; it is intentionally separate because it requires network access.

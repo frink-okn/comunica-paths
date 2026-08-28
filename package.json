@@ -21,7 +21,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist *.tsbuildinfo",
-    "test": "npm run build && node --test"
+    "test": "npm run build && tsc -p tsconfig.types.json && node --test test/*.test.mjs",
+    "test:live": "npm run build && node scripts/live-smoke.mjs"
   },
   "dependencies": {
     "@rdfjs/term-map": "^2.0.2",

@@ -728,16 +728,26 @@ function* reconstructShortestPaths(
   node: Term,
   predecessors: TermMap<Term, TermMap<Term, Predecessor[]>>,
 ): Iterable<CorePath> {
-  if (node.equals(root)) {
-    yield { nodes: [ root ], steps: [] };
-    return;
-  }
-  for (const predecessor of predecessors.get(root)?.get(node) ?? []) {
-    for (const prefix of reconstructShortestPaths(root, predecessor.from, predecessors)) {
+  const pending: Array<{ current: Term; reversedNodes: Term[]; reversedSteps: PathStep[] }> = [
+    { current: node, reversedNodes: [ node ], reversedSteps: [] },
+  ];
+  while (pending.length > 0) {
+    const state = pending.pop()!;
+    if (state.current.equals(root)) {
       yield {
-        nodes: [ ...prefix.nodes, node ],
-        steps: [ ...prefix.steps, predecessor.step ],
+        nodes: [ ...state.reversedNodes ].reverse(),
+        steps: [ ...state.reversedSteps ].reverse(),
       };
+      continue;
+    }
+    const options = predecessors.get(root)?.get(state.current) ?? [];
+    for (let index = options.length - 1; index >= 0; index--) {
+      const predecessor = options[index]!;
+      pending.push({
+        current: predecessor.from,
+        reversedNodes: [ ...state.reversedNodes, predecessor.from ],
+        reversedSteps: [ ...state.reversedSteps, predecessor.step ],
+      });
     }
   }
 }
