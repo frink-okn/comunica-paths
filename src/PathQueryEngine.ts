@@ -655,9 +655,8 @@ implements IPathQueryEngine<QueryContext> {
 
   /**
    * Join a frontier with a standard graph pattern. Ordinary RDF terms remain in
-   * batched VALUES clauses so Comunica can plan the join as a whole. Blank nodes
-   * are passed as initial bindings: Comunica can then retain their source scope
-   * and deskolemize them only for the source that produced them.
+   * batched VALUES clauses so Comunica can plan the query as a whole. Blank nodes
+   * are passed as initial bindings because SPARQL VALUES cannot contain them.
    */
   private async *queryConstrained(
     template: SelectQuery,
@@ -667,28 +666,8 @@ implements IPathQueryEngine<QueryContext> {
     context: QueryContext | undefined,
     signal: AbortSignal | undefined,
   ): AsyncIterable<Bindings> {
-    if (this.engine.queryBindingsWithBindings) {
-      const query = compileQuery(template);
-      for (const batch of batches(terms, this.batchSize)) {
-        const frontierBindings = batch.map((term) => {
-          const seed = bindingSeeds.get(term);
-          if (!seed) {
-            throw new InvalidPathQueryError('Internal path state lost the bindings for a frontier node');
-          }
-          return bindOnly(seed, variable, term);
-        });
-        const stream = await abortable(
-          this.engine.queryBindingsWithBindings(query, variable, frontierBindings, context),
-          signal,
-          undefined,
-          lateStream => lateStream.destroy(),
-        );
-        yield* consumeBindingsStream(stream, signal);
-      }
-      return;
-    }
-
     let serializable: Term[] = [];
+    const query = compileQuery(template);
     const blankNodeQuery = compileInitialBindingQuery(template, variable);
     const flushSerializable = async function*(engine: PathQueryEngine<QueryContext>): AsyncIterable<Bindings> {
       if (serializable.length === 0) {
@@ -696,8 +675,24 @@ implements IPathQueryEngine<QueryContext> {
       }
       const pending = serializable;
       serializable = [];
-      const query = compileValuesQuery(template, variable, pending);
-      yield* engine.queryBindings(query, context, signal);
+      if (engine.engine.queryBindingsWithBindings) {
+        const frontierBindings = pending.map((term) => {
+          const seed = bindingSeeds.get(term);
+          if (!seed) {
+            throw new InvalidPathQueryError('Internal path state lost the bindings for a frontier node');
+          }
+          return bindOnly(seed, variable, term);
+        });
+        const stream = await abortable(
+          engine.engine.queryBindingsWithBindings(query, variable, frontierBindings, context),
+          signal,
+          undefined,
+          lateStream => lateStream.destroy(),
+        );
+        yield* consumeBindingsStream(stream, signal);
+      } else {
+        yield* engine.queryBindings(compileValuesQuery(template, variable, pending), context, signal);
+      }
     };
 
     for (const term of terms) {

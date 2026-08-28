@@ -22,8 +22,7 @@
           "@id": "urn:comunica:paths:query/actors#bfs",
           "@type": "ActorQueryPathBfs",
           "batchSize": 128,
-          "queryProcessor": { "@id": "urn:comunica:default:query-process/actors#sequential" },
-          "mediatorRdfJoin": { "@id": "urn:comunica:default:rdf-join/mediators#main" }
+          "queryProcessor": { "@id": "urn:comunica:default:query-process/actors#sequential" }
         },
         {
           "@id": "urn:comunica:paths:init",

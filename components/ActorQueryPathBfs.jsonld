@@ -13,17 +13,12 @@
       "extends": [
         "cpaths:components/ActorQueryPath.jsonld#ActorQueryPath"
       ],
-      "comment": "Executes breadth-first path traversal while delegating every frontier join to Comunica's RDF-join mediator.",
+      "comment": "Executes breadth-first path traversal while submitting each bounded frontier to Comunica as standard query algebra.",
       "parameters": [
         {
           "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_queryProcessor",
           "range": "cbqp:components/ActorQueryProcess.jsonld#IQueryProcessSequential",
           "comment": "The standard sequential query processor used to parse, optimize, and evaluate graph patterns."
-        },
-        {
-          "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_mediatorRdfJoin",
-          "range": "cc:components/Mediator.jsonld#Mediator",
-          "comment": "The configured RDF-join mediator used for frontier/VIA and candidate/END joins."
         },
         {
           "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_batchSize",
@@ -156,10 +151,6 @@
           "memberFieldName": "queryProcessor"
         },
         {
-          "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs__member_mediatorRdfJoin",
-          "memberFieldName": "mediatorRdfJoin"
-        },
-        {
           "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs__member_batchSize",
           "memberFieldName": "batchSize"
         },
@@ -184,12 +175,6 @@
               "keyRaw": "queryProcessor",
               "value": {
                 "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_queryProcessor"
-              }
-            },
-            {
-              "keyRaw": "mediatorRdfJoin",
-              "value": {
-                "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_mediatorRdfJoin"
               }
             },
             {
@@ -238,10 +223,6 @@
         {
           "@id": "cpaths:components/ActorQueryPathBfs.jsonld#IActorQueryPathBfsArgs__member_queryProcessor",
           "memberFieldName": "queryProcessor"
-        },
-        {
-          "@id": "cpaths:components/ActorQueryPathBfs.jsonld#IActorQueryPathBfsArgs__member_mediatorRdfJoin",
-          "memberFieldName": "mediatorRdfJoin"
         },
         {
           "@id": "cpaths:components/ActorQueryPathBfs.jsonld#IActorQueryPathBfsArgs__member_batchSize",

@@ -55,11 +55,11 @@ describe('Components.js path engine', () => {
     assert.equal(rows.length, 2);
   });
 
-  it('delegates frontier joins to the configured RDF-join mediator', async () => {
+  it('delegates frontier joins to Comunica query planning', async () => {
     const joins = [];
     const physicalQueryPlanLogger = {
       logOperation(logicalOperator, physicalOperator, node, _parentNode, actor) {
-        if (logicalOperator === 'join-inner' && node.entries?.some(entry => entry.operationModified)) {
+        if (logicalOperator === 'join-inner') {
           joins.push({ actor, physicalOperator });
         }
       },
@@ -169,13 +169,67 @@ describe('Components.js path engine', () => {
     }));
 
     assert.deepEqual(paths.map(nodePath), [ 'a-d' ], endpointQueries.join('\n---\n'));
-    assert.equal(endpointQueries.length, 2, endpointQueries.join('\n---\n'));
-    for (const viaQuery of endpointQueries) {
+    const viaQueries = endpointQueries.filter(query => query.includes(`<${EX}edge>`));
+    assert.equal(viaQueries.length, 2, endpointQueries.join('\n---\n'));
+    assert.equal(endpointQueries.length, viaQueries.length,
+      'source-independent START and END forms should execute locally');
+    for (const viaQuery of viaQueries) {
       assert.match(viaQuery, /VALUES\s+\?from/iu);
       assert.doesNotMatch(viaQuery, /\{\s*SELECT\b/iu);
       assert.doesNotMatch(viaQuery, /\bDISTINCT\b/iu);
-      assert.doesNotMatch(viaQuery, /_:/u, 'remote blank nodes must not be sent back in VALUES');
     }
+    assert.ok(endpointQueries.every(query => !query.includes('_:')),
+      'remote blank nodes must not be sent back in a later query');
+  });
+
+  it('preserves source scope around multi-pattern endpoint joins', async () => {
+    const endpointQueries = [];
+    const fetch = async(input, init = {}) => {
+      const url = new URL(typeof input === 'string' ? input : input.url);
+      let query = url.searchParams.get('query');
+      if (!query && typeof init.body === 'string') {
+        query = new URLSearchParams(init.body).get('query');
+      }
+      assert.ok(query, 'expected a SPARQL query in the endpoint request');
+      endpointQueries.push(query);
+
+      let vars;
+      let bindings;
+      if (query.includes(`<${EX}cast>`)) {
+        vars = [ 'from', 'work', 'to' ];
+        bindings = [{
+          from: { type: 'uri', value: `${EX}a` },
+          work: { type: 'uri', value: `${EX}film` },
+          to: { type: 'uri', value: `${EX}d` },
+        }];
+      } else if (query.includes('?start')) {
+        vars = [ 'start' ];
+        bindings = [{ start: { type: 'uri', value: `${EX}a` } }];
+      } else {
+        vars = [ 'end' ];
+        bindings = [{ end: { type: 'uri', value: `${EX}d` } }];
+      }
+      return new Response(JSON.stringify({ head: { vars }, results: { bindings } }), {
+        headers: { 'content-type': 'application/sparql-results+json' },
+      });
+    };
+
+    const paths = await collect(new QueryEngine().queryPaths(spec({
+      via: {
+        pattern: '?work ex:cast ?from . ?work ex:cast ?to',
+        from: '?from',
+        to: '?to',
+      },
+    }), {
+      sources: [{ type: 'sparql', value: `${EX}sparql` }],
+      fetch,
+    }));
+
+    assert.deepEqual(paths.map(nodePath), [ 'a-d' ], endpointQueries.join('\n---\n'));
+    const viaQuery = endpointQueries.find(query => query.includes(`<${EX}cast>`));
+    assert.ok(viaQuery);
+    assert.match(viaQuery, /VALUES\s+\?from/iu);
+    assert.doesNotMatch(viaQuery, /\{\s*SELECT\b/iu);
   });
 
   it('rejects algorithms not handled by the bundled BFS actor', async () => {
