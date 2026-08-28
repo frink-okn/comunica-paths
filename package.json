@@ -21,12 +21,19 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist *.tsbuildinfo",
-    "test": "npm run build"
+    "test": "npm run build && node --test"
   },
   "dependencies": {
-    "@rdfjs/types": "^2.0.1"
+    "@rdfjs/term-map": "^2.0.2",
+    "@rdfjs/term-set": "^2.0.3",
+    "@rdfjs/types": "^2.0.1",
+    "sparqljs": "^3.7.4"
   },
   "devDependencies": {
+    "@comunica/query-sparql": "^5.3.0",
+    "@types/rdfjs__term-map": "^2.0.10",
+    "@types/rdfjs__term-set": "^2.0.9",
+    "@types/sparqljs": "^3.1.12",
     "typescript": "^5.9.0"
   },
   "engines": {
@@ -37,4 +44,3 @@
     "url": "https://github.com/frink-okn/comunica-paths.git"
   }
 }
-

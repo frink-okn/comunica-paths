@@ -1,0 +1,8 @@
+@prefix ex: <https://example.org/> .
+
+ex:b ex:edge ex:d .
+ex:c ex:edge ex:d .
+ex:x ex:edge ex:d .
+ex:e ex:edge ex:a .
+ex:d ex:target true; ex:rank 1 .
+

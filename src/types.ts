@@ -5,8 +5,11 @@ export type SparqlVariable = `?${string}` | `$${string}`;
 
 /** A START or END graph pattern and the variable denoting its path node. */
 export interface PathEndpointPattern {
-  /** The contents of a standard SPARQL WHERE clause, without the outer braces. */
-  pattern: string;
+  /**
+   * The contents of a standard SPARQL WHERE clause, without the outer braces.
+   * Omit it to leave this endpoint unconstrained.
+   */
+  pattern?: string;
   node: SparqlVariable;
 }
 
@@ -34,7 +37,7 @@ export interface PathQuerySpec {
   end: PathEndpointPattern;
   via: PathViaPattern;
   mode?: PathQueryMode;
-  /** A safety bound for otherwise unbounded traversals. Zero permits only start nodes. */
+  /** A safety bound for otherwise unbounded traversals. Zero permits no edges. */
   maxDepth?: number;
   /** Stop after emitting this many paths. Zero emits none. */
   maxPaths?: number;
@@ -48,22 +51,30 @@ export interface PathStep {
   bindings: Bindings;
 }
 
-/** A streamed path result. A zero-length path has one node and no steps. */
+/** A streamed path result. */
 export interface PathResult {
   nodes: readonly Term[];
   steps: readonly PathStep[];
+  /** The matching START solution, including variables other than the path node. */
+  startBindings?: Bindings;
+  /** The matching END solution, including variables other than the path node. */
+  endBindings?: Bindings;
 }
 
 /**
  * The small structural subset of Comunica needed by the path executor.
- * Stock Comunica and specialised engines such as kgf-sparql both satisfy it.
+ * Stock and custom-configured Comunica engines satisfy it.
  */
 export interface BindingsQueryEngine<QueryContext = unknown> {
   queryBindings(query: string, context?: QueryContext): Promise<AsyncIterable<Bindings>>;
 }
 
-/** Public execution contract; its implementation will remain outside Comunica's algebra. */
-export interface PathQueryEngine<QueryContext = unknown> {
-  queryPaths(spec: PathQuerySpec, context?: QueryContext): AsyncIterable<PathResult>;
+export interface PathQueryEngineOptions {
+  /** Maximum number of RDF terms placed in a generated VALUES clause. */
+  batchSize?: number;
 }
 
+/** Public execution contract; its implementation remains outside Comunica's algebra. */
+export interface IPathQueryEngine<QueryContext = unknown> {
+  queryPaths(spec: PathQuerySpec, context?: QueryContext): AsyncIterable<PathResult>;
+}

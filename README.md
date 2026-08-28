@@ -25,10 +25,23 @@ const query = {
 } satisfies PathQuerySpec;
 ```
 
-The eventual executor will compile each traversal frontier into ordinary SPARQL and submit
+The executor compiles each traversal frontier into ordinary SPARQL and submits
 it through the injected engine's `queryBindings` method. That makes stock Comunica and other
 configured Comunica engines usable without coupling this package to their Components.js 
 configuration.
+
+```ts
+import { QueryEngine } from '@comunica/query-sparql';
+import { PathQueryEngine } from 'comunica-paths';
+
+const paths = new PathQueryEngine(new QueryEngine()).queryPaths(query, {
+  sources: [ 'https://example.org/data.ttl' ],
+});
+
+for await (const path of paths) {
+  console.log(path.nodes, path.steps);
+}
+```
 
 ## Intended execution model
 
@@ -37,8 +50,8 @@ configuration.
    `VALUES`, allowing Comunica to optimise the VIA pattern across all configured sources.
 3. Stream VIA solutions immediately while building the next breadth-first frontier.
 4. Test candidate nodes against END in batches and cache the result.
-5. For `shortest`, retain distances and a predecessor DAG; finish the matching BFS level but
-   never expand a deeper one. For `all`, enumerate simple paths with explicit resource
+5. For `shortest`, retain per-start distances and predecessor DAGs so every start/end pair
+   gets all of its shortest paths. For `all`, enumerate simple paths with explicit resource
    limits so cycles cannot run forever.
 6. Propagate cancellation and downstream backpressure to every active Comunica stream.
 
@@ -54,6 +67,5 @@ neither representation changes the executor.
 
 ## Status
 
-The repository currently defines and documents the clean public boundary. The first
-implementation milestone is the batched streaming shortest-path executor, tested against
-an in-memory dataset and a two-source federation before adding either textual syntax.
+The programmatic API supports batched, streaming shortest-path execution. `ALL`, textual
+PATHS syntax, and the optional standard-SPARQL envelope are the next implementation stages.
