@@ -26,11 +26,13 @@ describe('command-line interface', () => {
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.stderr, '');
     const paths = result.stdout.trim().split('\n').map(line => JSON.parse(line));
-    assert.deepEqual(paths.map(path => path.length), [ 2, 2 ]);
+    assert.deepEqual(paths.map(path => path.steps.length), [ 2, 2 ]);
     assert.deepEqual(paths.map(path => path.nodes.map(node => node.value).join('-')), [
       `${EX}a-${EX}b-${EX}d`,
       `${EX}a-${EX}c-${EX}d`,
     ]);
+    assert.deepEqual(Object.keys(paths[0]).sort(), [ 'endBindings', 'nodes', 'startBindings', 'steps' ]);
+    assert.deepEqual(Object.keys(paths[0].steps[0]), [ 'bindings' ]);
     assert.deepEqual(Object.keys(paths[0].steps[0].bindings).sort(), [ 'from', 'to' ]);
   });
 

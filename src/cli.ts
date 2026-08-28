@@ -187,11 +187,8 @@ async function readStandardInput(): Promise<string> {
 
 function pathToJson(path: PathResult): Record<string, unknown> {
   return {
-    length: path.steps.length,
     nodes: path.nodes.map(termToJson),
     steps: path.steps.map(step => ({
-      from: termToJson(step.from),
-      to: termToJson(step.to),
       bindings: bindingsToJson(step.bindings),
     })),
     ...(path.startBindings ? { startBindings: bindingsToJson(path.startBindings) } : {}),

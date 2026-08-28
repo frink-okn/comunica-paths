@@ -59,11 +59,11 @@ Remote RDF documents, SPARQL endpoints, and LDF endpoints can be supplied with r
 cat route.paths | comunica-paths --url https://apps.okn.us/ldf/wikidata
 ```
 
-The command writes JSON Lines: each line is one complete path containing its length, RDF/JS
-nodes, steps, and START/END bindings. This keeps results streamable and easy to pipe to tools
-such as `jq`. Local source formats are inferred from common RDF filename extensions. Use
-`comunica-paths --help` for the full option list; Ctrl-C cancels active Comunica streams and
-HTTP requests.
+The command writes JSON Lines: each line is one complete path containing its ordered RDF/JS
+nodes, the complete VIA bindings for each step, and START/END bindings. Step `i` connects node
+`i` to node `i + 1`. This keeps results streamable and easy to pipe to tools such as `jq`.
+Local source formats are inferred from common RDF filename extensions. Use `comunica-paths
+--help` for the full option list; Ctrl-C cancels active Comunica streams and HTTP requests.
 
 ## Design boundary
 
