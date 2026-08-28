@@ -61,6 +61,9 @@
           "args_mediatorRdfJoin": {
             "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_mediatorRdfJoin"
           },
+          "args_batchSize": {
+            "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_batchSize"
+          },
           "args_name": {
             "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_name"
           },
@@ -79,6 +82,9 @@
           },
           "mediatorRdfJoin": {
             "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_mediatorRdfJoin"
+          },
+          "batchSize": {
+            "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_batchSize"
           },
           "name": {
             "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_name"

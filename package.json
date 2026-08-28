@@ -11,8 +11,12 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    },
+    "./config/config-default.json": "./config/config-default.json",
+    "./components/*": "./components/*",
+    "./package.json": "./package.json"
   },
   "files": [
     "components",

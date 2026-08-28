@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { KeysInitQuery } from '@comunica/context-entries';
 import { ActionContext } from '@comunica/core';
-import { QueryEngine, QueryEngineFactory } from '../dist/index.js';
+import { PathQueryCancelledError, QueryEngine, QueryEngineFactory } from '../dist/index.js';
 
 const EX = 'https://example.org/';
 
@@ -111,5 +111,23 @@ describe('Components.js path engine', () => {
     }));
 
     assert.deepEqual(paths.map(nodePath), [ 'a-d' ]);
+  });
+
+  it('propagates cancellation through the actor-backed result stream', async () => {
+    const controller = new AbortController();
+    const paths = new QueryEngine().queryPaths(spec({
+      end: { node: '?end' },
+      maxDepth: 2,
+    }), {
+      sources: [ source(`
+        <${EX}a> <${EX}edge> <${EX}b> .
+        <${EX}a> <${EX}edge> <${EX}c> .
+        <${EX}b> <${EX}edge> <${EX}d> .
+      `, 'cancel') ],
+    }, { signal: controller.signal })[Symbol.asyncIterator]();
+
+    assert.equal((await paths.next()).done, false);
+    controller.abort();
+    await assert.rejects(paths.next(), PathQueryCancelledError);
   });
 });

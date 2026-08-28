@@ -1,13 +1,12 @@
 import assert from 'node:assert/strict';
-import { QueryEngine } from '@comunica/query-sparql';
-import { PathQueryEngine } from '../dist/index.js';
+import { QueryEngine } from '../dist/index.js';
 
 const endpoint = 'https://apps.okn.us/ldf/wikidata';
 const controller = new AbortController();
 const timeout = setTimeout(() => controller.abort(), 30_000);
 
 try {
-  const engine = new PathQueryEngine(new QueryEngine());
+  const engine = new QueryEngine();
   const paths = [];
   for await (const path of engine.queryPathString(`
     PREFIX wd: <http://www.wikidata.org/entity/>
@@ -37,4 +36,3 @@ try {
 } finally {
   clearTimeout(timeout);
 }
-

@@ -23,11 +23,13 @@ import { PathQueryEngine } from './PathQueryEngine.js';
 export class ActorQueryPathBfs extends ActorQueryPath {
   private readonly queryProcessor: IQueryProcessSequential;
   private readonly mediatorRdfJoin: MediatorRdfJoin;
+  private readonly batchSize: number | undefined;
 
   public constructor(args: IActorQueryPathBfsArgs) {
     super(args);
     this.queryProcessor = args.queryProcessor;
     this.mediatorRdfJoin = args.mediatorRdfJoin;
+    this.batchSize = args.batchSize;
   }
 
   public async test(_action: IActionQueryPath): Promise<TestResult<IActorTest>> {
@@ -40,7 +42,10 @@ export class ActorQueryPathBfs extends ActorQueryPath {
       this.mediatorRdfJoin,
       action.context,
     );
-    const engine = new PathQueryEngine<QueryStringContext>(backend);
+    const engine = new PathQueryEngine<QueryStringContext>(
+      backend,
+      this.batchSize === undefined ? {} : { batchSize: this.batchSize },
+    );
     return {
       pathStream: engine.queryPaths(action.spec, undefined, action.options),
     };
@@ -52,6 +57,8 @@ export interface IActorQueryPathBfsArgs extends IActorQueryPathArgs {
   queryProcessor: IQueryProcessSequential;
   /** The configured RDF-join mediator used for frontier/VIA and candidate/END joins. */
   mediatorRdfJoin: MediatorRdfJoin;
+  /** Maximum number of frontier bindings submitted in one mediated join. */
+  batchSize?: number;
 }
 
 class MediatedBindingsBackend {

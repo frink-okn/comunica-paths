@@ -26,6 +26,19 @@
           "comment": "The configured RDF-join mediator used for frontier/VIA and candidate/END joins."
         },
         {
+          "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_batchSize",
+          "range": {
+            "@type": "ParameterRangeUnion",
+            "parameterRangeElements": [
+              "xsd:number",
+              {
+                "@type": "ParameterRangeUndefined"
+              }
+            ]
+          },
+          "comment": "Maximum number of frontier bindings submitted in one mediated join."
+        },
+        {
           "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_name",
           "range": "xsd:string",
           "default": {
@@ -146,6 +159,10 @@
           "memberFieldName": "mediatorRdfJoin"
         },
         {
+          "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs__member_batchSize",
+          "memberFieldName": "batchSize"
+        },
+        {
           "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs__member_constructor",
           "memberFieldName": "constructor"
         },
@@ -172,6 +189,12 @@
               "keyRaw": "mediatorRdfJoin",
               "value": {
                 "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_mediatorRdfJoin"
+              }
+            },
+            {
+              "keyRaw": "batchSize",
+              "value": {
+                "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_batchSize"
               }
             },
             {
@@ -218,6 +241,10 @@
         {
           "@id": "cpaths:components/ActorQueryPathBfs.jsonld#IActorQueryPathBfsArgs__member_mediatorRdfJoin",
           "memberFieldName": "mediatorRdfJoin"
+        },
+        {
+          "@id": "cpaths:components/ActorQueryPathBfs.jsonld#IActorQueryPathBfsArgs__member_batchSize",
+          "memberFieldName": "batchSize"
         }
       ],
       "constructorArguments": []
