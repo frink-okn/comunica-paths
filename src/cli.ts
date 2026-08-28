@@ -1,32 +1,38 @@
 #!/usr/bin/env node
 
 import { once } from 'node:events';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { extname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
-import type { QuerySourceUnidentified } from '@comunica/types';
+import { CliArgsHandlerBase } from '@comunica/actor-init-query';
+import type { QuerySourceUnidentified, QueryStringContext } from '@comunica/types';
 import type { Bindings, Term } from '@rdfjs/types';
 import { PathQueryCancelledError } from './errors.js';
 import { QueryEngine } from './QueryEngine.js';
 import type { PathResult } from './types.js';
 
-const HELP = `Usage: comunica-paths [options] [query-file]
+const HELP = `Usage: comunica-paths [options] [query-file] [sources...]
 
 Execute a PATHS query and stream one JSON object per matching path.
 The query is read from stdin when query-file is omitted or is "-".
+Sources may be URLs or Comunica type-prefixed values such as sparql@https://example.org/sparql.
 
 Options:
-  -f, --file <path>       Read a local RDF source (repeatable)
-  -u, --url <url>         Query a remote RDF source (repeatable)
-  -a, --algorithm <name> Select a configured path actor (default: bfs)
-  -h, --help              Show this help
-  -V, --version           Show the package version
+  -s, --source <source>    Add a Comunica source, optionally as type@value (repeatable)
+  -c, --context <json|file> Use a JSON query context string or file
+  -f, --file <path>        Read a local RDF source (repeatable)
+  -u, --url <url>          Query a remote RDF source (repeatable)
+  -a, --algorithm <name>  Select a configured path actor (default: bfs)
+  -h, --help               Show this help
+  -V, --version            Show the package version
 
 Examples:
   comunica-paths route.paths --file graph.ttl
-  comunica-paths route.paths --file a.ttl --file b.nq
-  cat route.paths | comunica-paths --url https://example.org/data
+  comunica-paths route.paths sparql@https://qlever.dev/api/wikidata
+  comunica-paths route.paths --context sources.json
+  cat route.paths | comunica-paths --source brtpf@https://example.org/data
 `;
 
 const MEDIA_TYPES: Readonly<Record<string, string>> = {
@@ -48,9 +54,11 @@ const MEDIA_TYPES: Readonly<Record<string, string>> = {
 
 interface CliArguments {
   algorithm?: string;
+  context?: string;
   files: string[];
   help: boolean;
   queryFile?: string;
+  sources: string[];
   urls: string[];
   version: boolean;
 }
@@ -88,8 +96,14 @@ async function main(args: string[]): Promise<void> {
     throw new CliError('PATHS query input is empty');
   }
 
+  const queryContext = await loadQueryContext(options.context);
   const localSources = await Promise.all(options.files.map(loadLocalSource));
-  const sources: QuerySourceUnidentified[] = [ ...localSources, ...options.urls ];
+  const sources: QuerySourceUnidentified[] = [
+    ...(queryContext.sources ?? []),
+    ...localSources,
+    ...options.sources.map(parseSourceArgument),
+    ...options.urls.map(parseRemoteSourceArgument),
+  ];
   const controller = new AbortController();
   const abort = (): void => controller.abort();
   process.once('SIGINT', abort);
@@ -99,7 +113,7 @@ async function main(args: string[]): Promise<void> {
     const engine = new QueryEngine();
     for await (const path of engine.queryPathString(
       query,
-      { sources, httpAbortSignal: controller.signal },
+      { ...queryContext, sources, httpAbortSignal: controller.signal } as QueryStringContext,
       { signal: controller.signal, ...(options.algorithm ? { algorithm: options.algorithm } : {}) },
     )) {
       await writeLine(JSON.stringify(pathToJson(path)));
@@ -121,8 +135,10 @@ function parseCliArguments(args: string[]): CliArguments {
       allowPositionals: true,
       options: {
         algorithm: { type: 'string', short: 'a' },
+        context: { type: 'string', short: 'c' },
         file: { type: 'string', short: 'f', multiple: true },
         help: { type: 'boolean', short: 'h' },
+        source: { type: 'string', short: 's', multiple: true },
         url: { type: 'string', short: 'u', multiple: true },
         version: { type: 'boolean', short: 'V' },
       },
@@ -132,25 +148,61 @@ function parseCliArguments(args: string[]): CliArguments {
     throw new CliError(error instanceof Error ? error.message : String(error));
   }
 
-  if (parsed.positionals.length > 1) {
-    throw new CliError(`Expected at most one query file, received ${parsed.positionals.length}`);
-  }
   for (const url of parsed.values.url ?? []) {
-    try {
-      new URL(url);
-    } catch {
-      throw new CliError(`Invalid source URL: ${url}`);
-    }
+    parseRemoteSourceArgument(url);
   }
 
   return {
     files: parsed.values.file ?? [],
     urls: parsed.values.url ?? [],
     help: parsed.values.help ?? false,
+    sources: [ ...parsed.positionals.slice(1), ...(parsed.values.source ?? []) ],
     version: parsed.values.version ?? false,
+    ...(parsed.values.context === undefined ? {} : { context: parsed.values.context }),
     ...(parsed.positionals[0] === undefined ? {} : { queryFile: parsed.positionals[0] }),
     ...(parsed.values.algorithm === undefined ? {} : { algorithm: parsed.values.algorithm }),
   };
+}
+
+function parseSourceArgument(sourceString: string): QuerySourceUnidentified {
+  const source = CliArgsHandlerBase.getSourceObjectFromString(sourceString);
+  if (typeof source.value !== 'string' || source.value.length === 0) {
+    throw new CliError(`Invalid source: ${sourceString}`);
+  }
+  return source as QuerySourceUnidentified;
+}
+
+function parseRemoteSourceArgument(sourceString: string): QuerySourceUnidentified {
+  const source = parseSourceArgument(sourceString) as { value: string };
+  try {
+    new URL(source.value);
+  } catch {
+    throw new CliError(`Invalid source URL: ${sourceString}`);
+  }
+  return source as QuerySourceUnidentified;
+}
+
+async function loadQueryContext(contextInput: string | undefined): Promise<Partial<QueryStringContext>> {
+  if (contextInput === undefined) {
+    return {};
+  }
+  const fromFile = existsSync(contextInput);
+  const input = fromFile ? await readTextFile(contextInput, 'context') : contextInput;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(input);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new CliError(`Could not parse ${fromFile ? `context file ${contextInput}` : 'context JSON'}: ${message}`);
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new CliError('Query context must be a JSON object');
+  }
+  const context = parsed as Record<string, unknown>;
+  if (context.sources !== undefined && !Array.isArray(context.sources)) {
+    throw new CliError('Query context "sources" must be an array');
+  }
+  return context as Partial<QueryStringContext>;
 }
 
 async function loadLocalSource(file: string): Promise<QuerySourceUnidentified> {

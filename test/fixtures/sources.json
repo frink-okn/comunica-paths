@@ -1,0 +1,10 @@
+{
+  "sources": [
+    {
+      "type": "serialized",
+      "value": "@prefix ex: <https://example.org/> .\nex:a ex:edge ex:b .\n",
+      "mediaType": "text/turtle",
+      "baseIRI": "https://example.org/context-source"
+    }
+  ]
+}

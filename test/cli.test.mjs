@@ -42,7 +42,32 @@ describe('command-line interface', () => {
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /^Usage: comunica-paths/u);
     assert.match(result.stdout, /--file <path>/u);
+    assert.match(result.stdout, /--source <source>/u);
+    assert.match(result.stdout, /--context <json\|file>/u);
     assert.match(result.stdout, /--url <url>/u);
+  });
+
+  it('loads typed sources from a Comunica JSON context file', () => {
+    const result = runCli([
+      'test/fixtures/shortest.paths',
+      '--context', 'test/fixtures/sources.json',
+      '--file', 'test/fixtures/source-b.ttl',
+    ]);
+
+    assert.equal(result.status, 0, result.stderr);
+    const path = JSON.parse(result.stdout.trim());
+    assert.deepEqual(path.nodes.map(node => node.value), [ `${EX}a`, `${EX}b`, `${EX}d` ]);
+  });
+
+  it('accepts Comunica type-prefixed positional sources', () => {
+    const result = runCli([
+      'test/fixtures/shortest.paths',
+      'invalid-source-type@urn:unused',
+    ]);
+
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /source type invalid-source-type/u);
+    assert.doesNotMatch(result.stderr, /Invalid source URL/u);
   });
 
   it('reads a PATHS query from stdin when no query file is given', () => {

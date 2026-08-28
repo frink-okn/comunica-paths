@@ -53,10 +53,35 @@ comunica-paths route.paths --file data-a.ttl --file data-b.ttl
 ```
 
 Remote RDF documents, SPARQL endpoints, and LDF endpoints can be supplied with repeatable
-`--url` options. Query text may also be piped over standard input:
+`--url` options. Sources can also use Comunica's `type@value` syntax, either as positional
+arguments after the query file or through repeatable `--source` options. This is useful when
+automatic source identification is unavailable or ambiguous:
+
+```bash
+comunica-paths route.paths sparql@https://qlever.dev/api/wikidata
+comunica-paths route.paths --source brtpf@https://example.org/fragments
+```
+
+A JSON query context can supply typed sources and other standard Comunica context options:
+
+```json
+{
+  "sources": [
+    { "type": "sparql", "value": "https://qlever.dev/api/wikidata" }
+  ]
+}
+```
+
+```bash
+comunica-paths route.paths --context sources.json
+```
+
+CLI sources are appended to sources from the context. Query text may also be piped over standard
+input (use `-` as its positional query-file marker when positional sources follow):
 
 ```bash
 cat route.paths | comunica-paths --url https://apps.okn.us/ldf/wikidata
+cat route.paths | comunica-paths - sparql@https://qlever.dev/api/wikidata
 ```
 
 The command writes JSON Lines: each line is one complete path containing its ordered RDF/JS
