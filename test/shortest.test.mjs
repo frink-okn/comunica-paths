@@ -144,6 +144,46 @@ describe('shortest path execution', () => {
     assert.ok(frontierQueries.every(({ parsed }) => parsed.where[0].values.length === 1));
   });
 
+  it('stops after completing the shortest layer for a fixed END', async () => {
+    const delegate = new QueryEngine();
+    const queries = [];
+    const recordingEngine = {
+      async queryBindings(query, context) {
+        queries.push(query);
+        return delegate.queryBindings(query, context);
+      },
+    };
+    const engine = new PathQueryEngine(recordingEngine);
+    const paths = await collect(engine.queryPaths(spec({
+      end: { pattern: 'VALUES ?end { ex:d }', node: '?end' },
+      maxDepth: 4,
+      maxPaths: 5,
+    }), { sources }));
+
+    assert.deepEqual(paths.map(nodePath).sort(), [ 'a-b-d', 'a-c-d' ]);
+    assert.equal(queries.filter(query => /VALUES\s+\?from\s*\{/iu.test(query)).length, 2);
+  });
+
+  it('does not expand a second layer after finding a direct fixed END', async () => {
+    const delegate = new QueryEngine();
+    const queries = [];
+    const recordingEngine = {
+      async queryBindings(query, context) {
+        queries.push(query);
+        return delegate.queryBindings(query, context);
+      },
+    };
+    const engine = new PathQueryEngine(recordingEngine);
+    const paths = await collect(engine.queryPaths(spec({
+      end: { pattern: 'VALUES ?end { ex:b }', node: '?end' },
+      maxDepth: 4,
+      maxPaths: 5,
+    }), { sources }));
+
+    assert.deepEqual(paths.map(nodePath), [ 'a-b' ]);
+    assert.equal(queries.filter(query => /VALUES\s+\?from\s*\{/iu.test(query)).length, 1);
+  });
+
   it('carries blank-node frontiers through Comunica initial bindings', async () => {
     const left = {
       type: 'serialized',

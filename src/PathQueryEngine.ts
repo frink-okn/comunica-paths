@@ -155,6 +155,10 @@ implements IPathQueryEngine<QueryContext> {
     const predecessors = new TermMap<Term, TermMap<Term, Predecessor[]>>();
     const cycleDistances = new TermMap<Term, number>();
     const endpointCache = new TermMap<Term, EndpointMatches | null>();
+    // A VALUES-only END describes a finite target set. Once every relevant
+    // start/target pair has a shortest distance, deeper layers cannot add a
+    // valid SHORTEST result and must not be expanded.
+    const fixedEndNodes = templates.start ? getFixedEndpointNodes(templates.end, spec.end.node) : undefined;
     let frontier = new TermMap<Term, TermSet<Term>>();
     let depth = 0;
 
@@ -218,6 +222,16 @@ implements IPathQueryEngine<QueryContext> {
         context,
         signal,
       );
+      if (fixedEndNodes && fixedEndpointsSettled(
+        roots,
+        fixedEndNodes,
+        distances,
+        cycleDistances,
+        spec.start.node === spec.end.node,
+        spec.cyclic ?? false,
+      )) {
+        return;
+      }
       frontier = layer.frontier;
       depth = nextDepth;
     }
@@ -876,6 +890,48 @@ function contextWithAbortSignal<QueryContext extends QueryStringContext>(
     return context;
   }
   return { ...context, httpAbortSignal: signal } as QueryContext;
+}
+
+function getFixedEndpointNodes(
+  end: SelectQuery | undefined,
+  variable: SparqlVariable,
+): TermSet<Term> | undefined {
+  if (end?.where?.length !== 1 || end.where[0]?.type !== 'values') {
+    return undefined;
+  }
+  const nodes = new TermSet<Term>();
+  for (const row of end.where[0].values) {
+    const term = row[variable];
+    if (!term) {
+      return undefined;
+    }
+    nodes.add(term);
+  }
+  return nodes;
+}
+
+function fixedEndpointsSettled(
+  roots: TermMap<Term, RootInfo>,
+  endpoints: TermSet<Term>,
+  distances: TermMap<Term, TermMap<Term, number>>,
+  cycleDistances: TermMap<Term, number>,
+  sameEndpointVariable: boolean,
+  cyclic: boolean,
+): boolean {
+  for (const root of roots.keys()) {
+    for (const endpoint of endpoints) {
+      if ((cyclic || sameEndpointVariable) && !root.equals(endpoint)) {
+        continue;
+      }
+      const settled = root.equals(endpoint) ?
+        cycleDistances.has(root) :
+        distances.get(root)?.has(endpoint) ?? false;
+      if (!settled) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 function* batches<T>(values: readonly T[], size: number): Iterable<readonly T[]> {

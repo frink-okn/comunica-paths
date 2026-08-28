@@ -48,6 +48,10 @@ and the abort signal is also forwarded to Comunica's HTTP actors. Completed dept
 waiting for the entire reachable graph. `all` mode similarly processes one bounded depth at a
 time while retaining the path prefixes needed to reject non-simple cycles.
 
+When END is a finite, VALUES-only target set, shortest traversal stops after every relevant
+start/target pair has been settled. The winning depth is still consumed completely so all
+equal-length shortest paths are retained, but no deeper frontier is evaluated.
+
 ## Blank nodes
 
 The native actor does not branch on RDF term type. Named nodes, literals, quoted triples, and
