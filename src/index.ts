@@ -13,7 +13,18 @@ export type {
   SparqlVariable,
 } from './types.js';
 export { InvalidPathQueryError, PathQueryCancelledError, UnsupportedPathTermError } from './errors.js';
+export {
+  ActorQueryPath,
+  type IActionQueryPath,
+  type IActorQueryPathArgs,
+  type IActorQueryPathOutput,
+  type MediatorQueryPath,
+} from './ActorQueryPath.js';
+export { ActorQueryPathBfs, type IActorQueryPathBfsArgs } from './ActorQueryPathBfs.js';
+export { ActorInitQueryPaths, type IActorInitQueryPathsArgs } from './ActorInitQueryPaths.js';
 export { PathQueryEngine } from './PathQueryEngine.js';
+export { QueryEngine } from './QueryEngine.js';
+export { QueryEngineFactory } from './QueryEngineFactory.js';
 export {
   parsePathServiceQuery,
   PATHS_END_GRAPH_IRI,

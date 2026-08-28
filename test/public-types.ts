@@ -1,5 +1,10 @@
 import { QueryEngine } from '@comunica/query-sparql';
-import { PathQueryEngine, type PathQuerySpec } from '../src/index.js';
+import {
+  PathQueryEngine,
+  QueryEngine as PathEnabledQueryEngine,
+  QueryEngineFactory,
+  type PathQuerySpec,
+} from '../src/index.js';
 
 const spec = {
   start: { pattern: 'VALUES ?from { <urn:a> }', node: '?from' },
@@ -17,3 +22,14 @@ const textualResults = engine.queryPathString(
 void results;
 void textualResults;
 
+const configuredEngine = new PathEnabledQueryEngine();
+const configuredResults = configuredEngine.queryPaths(spec, { sources: [] });
+const configuredTextualResults = configuredEngine.queryPathString(
+  'PATHS START ?from = <urn:a> END ?to VIA <urn:edge> LIMIT 1',
+  { sources: [] },
+);
+const dynamicEngine = new QueryEngineFactory().create();
+
+void configuredResults;
+void configuredTextualResults;
+void dynamicEngine;

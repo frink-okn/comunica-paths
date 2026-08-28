@@ -1,0 +1,202 @@
+{
+  "@context": [
+    "https://linkedsoftwaredependencies.org/bundles/npm/componentsjs/^6.0.0/components/context.jsonld",
+    {
+      "npmd": "https://linkedsoftwaredependencies.org/bundles/npm/",
+      "cpaths": "npmd:comunica-paths/^0.0.0/",
+      "ActorQueryPath": {
+        "@id": "cpaths:components/ActorQueryPath.jsonld#ActorQueryPath",
+        "@prefix": true,
+        "@context": {
+          "args_name": {
+            "@id": "cpaths:components/ActorQueryPath.jsonld#ActorQueryPath_args_name"
+          },
+          "args_bus": {
+            "@id": "cpaths:components/ActorQueryPath.jsonld#ActorQueryPath_args_bus"
+          },
+          "args_busFailMessage": {
+            "@id": "cpaths:components/ActorQueryPath.jsonld#ActorQueryPath_args_busFailMessage"
+          },
+          "args_beforeActors": {
+            "@id": "cpaths:components/ActorQueryPath.jsonld#ActorQueryPath_args_beforeActors",
+            "@container": "@list"
+          },
+          "name": {
+            "@id": "cpaths:components/ActorQueryPath.jsonld#ActorQueryPath_args_name"
+          },
+          "bus": {
+            "@id": "cpaths:components/ActorQueryPath.jsonld#ActorQueryPath_args_bus"
+          },
+          "busFailMessage": {
+            "@id": "cpaths:components/ActorQueryPath.jsonld#ActorQueryPath_args_busFailMessage"
+          },
+          "beforeActors": {
+            "@id": "cpaths:components/ActorQueryPath.jsonld#ActorQueryPath_args_beforeActors",
+            "@container": "@list"
+          }
+        }
+      },
+      "IActionQueryPath": {
+        "@id": "cpaths:components/ActorQueryPath.jsonld#IActionQueryPath",
+        "@prefix": true,
+        "@context": {}
+      },
+      "IActorQueryPathArgs": {
+        "@id": "cpaths:components/ActorQueryPath.jsonld#IActorQueryPathArgs",
+        "@prefix": true,
+        "@context": {}
+      },
+      "IActorQueryPathOutput": {
+        "@id": "cpaths:components/ActorQueryPath.jsonld#IActorQueryPathOutput",
+        "@prefix": true,
+        "@context": {}
+      },
+      "ActorQueryPathBfs": {
+        "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs",
+        "@prefix": true,
+        "@context": {
+          "args_queryProcessor": {
+            "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_queryProcessor"
+          },
+          "args_mediatorRdfJoin": {
+            "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_mediatorRdfJoin"
+          },
+          "args_name": {
+            "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_name"
+          },
+          "args_bus": {
+            "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_bus"
+          },
+          "args_busFailMessage": {
+            "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_busFailMessage"
+          },
+          "args_beforeActors": {
+            "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_beforeActors",
+            "@container": "@list"
+          },
+          "queryProcessor": {
+            "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_queryProcessor"
+          },
+          "mediatorRdfJoin": {
+            "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_mediatorRdfJoin"
+          },
+          "name": {
+            "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_name"
+          },
+          "bus": {
+            "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_bus"
+          },
+          "busFailMessage": {
+            "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_busFailMessage"
+          },
+          "beforeActors": {
+            "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_beforeActors",
+            "@container": "@list"
+          }
+        }
+      },
+      "IActorQueryPathBfsArgs": {
+        "@id": "cpaths:components/ActorQueryPathBfs.jsonld#IActorQueryPathBfsArgs",
+        "@prefix": true,
+        "@context": {}
+      },
+      "ActorInitQueryPaths": {
+        "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths",
+        "@prefix": true,
+        "@context": {
+          "args_mediatorQueryPath": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_mediatorQueryPath"
+          },
+          "args_mediatorQueryProcess": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_mediatorQueryProcess"
+          },
+          "args_mediatorQueryResultSerialize": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_mediatorQueryResultSerialize"
+          },
+          "args_mediatorQueryResultSerializeMediaTypeCombiner": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_mediatorQueryResultSerializeMediaTypeCombiner"
+          },
+          "args_mediatorQueryResultSerializeMediaTypeFormatCombiner": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_mediatorQueryResultSerializeMediaTypeFormatCombiner"
+          },
+          "args_mediatorHttpInvalidate": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_mediatorHttpInvalidate"
+          },
+          "args_queryString": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_queryString"
+          },
+          "args_defaultQueryInputFormat": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_defaultQueryInputFormat"
+          },
+          "args_allowNoSources": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_allowNoSources"
+          },
+          "args_context": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_context"
+          },
+          "args_name": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_name"
+          },
+          "args_bus": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_bus"
+          },
+          "args_busFailMessage": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_busFailMessage"
+          },
+          "args_beforeActors": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_beforeActors",
+            "@container": "@list"
+          },
+          "mediatorQueryPath": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_mediatorQueryPath"
+          },
+          "mediatorQueryProcess": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_mediatorQueryProcess"
+          },
+          "mediatorQueryResultSerialize": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_mediatorQueryResultSerialize"
+          },
+          "mediatorQueryResultSerializeMediaTypeCombiner": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_mediatorQueryResultSerializeMediaTypeCombiner"
+          },
+          "mediatorQueryResultSerializeMediaTypeFormatCombiner": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_mediatorQueryResultSerializeMediaTypeFormatCombiner"
+          },
+          "mediatorHttpInvalidate": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_mediatorHttpInvalidate"
+          },
+          "queryString": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_queryString"
+          },
+          "defaultQueryInputFormat": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_defaultQueryInputFormat"
+          },
+          "allowNoSources": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_allowNoSources"
+          },
+          "context": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_context"
+          },
+          "name": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_name"
+          },
+          "bus": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_bus"
+          },
+          "busFailMessage": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_busFailMessage"
+          },
+          "beforeActors": {
+            "@id": "cpaths:components/ActorInitQueryPaths.jsonld#ActorInitQueryPaths_args_beforeActors",
+            "@container": "@list"
+          }
+        }
+      },
+      "IActorInitQueryPathsArgs": {
+        "@id": "cpaths:components/ActorInitQueryPaths.jsonld#IActorInitQueryPathsArgs",
+        "@prefix": true,
+        "@context": {}
+      }
+    }
+  ]
+}

@@ -1,6 +1,5 @@
 import type {
   BindingsStream as ComunicaBindingsStream,
-  IQueryEngine,
   QueryStringContext,
 } from '@comunica/types';
 import type { Bindings, Term } from '@rdfjs/types';
@@ -79,8 +78,19 @@ export interface PathResult {
 export type BindingsStream = ComunicaBindingsStream;
 
 /** The public portion of a Comunica query engine used by this extension. */
-export type BindingsQueryEngine<QueryContext extends QueryStringContext = QueryStringContext> =
-  Pick<IQueryEngine<QueryContext>, 'queryBindings'>;
+export interface BindingsQueryEngine<QueryContext extends QueryStringContext = QueryStringContext> {
+  queryBindings(query: string, context?: QueryContext): Promise<BindingsStream>;
+  /**
+   * Optional native hook for joining a bindings frontier to a query. An actor-backed
+   * implementation can delegate this directly to Comunica's RDF-join mediator.
+   */
+  queryBindingsWithBindings?: (
+    query: string,
+    variable: SparqlVariable,
+    bindings: readonly Bindings[],
+    context?: QueryContext,
+  ) => Promise<BindingsStream>;
+}
 
 export interface PathQueryEngineOptions {
   /** Maximum number of RDF terms placed in a generated VALUES clause. */

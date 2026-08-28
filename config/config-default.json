@@ -1,0 +1,40 @@
+{
+  "@context": [
+    "https://linkedsoftwaredependencies.org/bundles/npm/@comunica/runner/^5.0.0/components/context.jsonld",
+    "https://linkedsoftwaredependencies.org/bundles/npm/@comunica/config-query-sparql/^5.0.0/components/context.jsonld",
+    "https://linkedsoftwaredependencies.org/bundles/npm/@comunica/mediator-race/^5.0.0/components/context.jsonld",
+    "https://linkedsoftwaredependencies.org/bundles/npm/comunica-paths/^0.0.0/components/context.jsonld"
+  ],
+  "import": [
+    "ccqs:config/config-default.json"
+  ],
+  "@graph": [
+    {
+      "@id": "urn:comunica:paths:query/mediators#main",
+      "@type": "MediatorRace",
+      "bus": { "@id": "ActorQueryPath:_default_bus" }
+    },
+    {
+      "@id": "urn:comunica:default:Runner",
+      "@type": "Runner",
+      "actors": [
+        {
+          "@id": "urn:comunica:paths:query/actors#bfs",
+          "@type": "ActorQueryPathBfs",
+          "queryProcessor": { "@id": "urn:comunica:default:query-process/actors#sequential" },
+          "mediatorRdfJoin": { "@id": "urn:comunica:default:rdf-join/mediators#main" }
+        },
+        {
+          "@id": "urn:comunica:paths:init",
+          "@type": "ActorInitQueryPaths",
+          "mediatorQueryPath": { "@id": "urn:comunica:paths:query/mediators#main" },
+          "mediatorQueryProcess": { "@id": "urn:comunica:default:query-process/mediators#main" },
+          "mediatorQueryResultSerialize": { "@id": "urn:comunica:default:query-result-serialize/mediators#serialize" },
+          "mediatorQueryResultSerializeMediaTypeCombiner": { "@id": "urn:comunica:default:query-result-serialize/mediators#mediaType" },
+          "mediatorQueryResultSerializeMediaTypeFormatCombiner": { "@id": "urn:comunica:default:query-result-serialize/mediators#mediaTypeFormat" },
+          "mediatorHttpInvalidate": { "@id": "urn:comunica:default:http-invalidate/mediators#main" }
+        }
+      ]
+    }
+  ]
+}

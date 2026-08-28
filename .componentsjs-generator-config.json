@@ -1,0 +1,32 @@
+{
+  "source": "dist",
+  "destination": "components",
+  "modulePrefix": "cpaths",
+  "ignoreComponents": [
+    "BindingsQueryEngine",
+    "BindingsStream",
+    "IPathQueryEngine",
+    "InvalidPathQueryError",
+    "MediatorQueryPath",
+    "PathEndpointPattern",
+    "PathQueryCancelledError",
+    "PathQueryEngine",
+    "PathQueryEngineOptions",
+    "PathQueryExecutionOptions",
+    "PathQueryMode",
+    "PathQuerySpec",
+    "PathResult",
+    "PathStep",
+    "PathViaPattern",
+    "PATHS_END_GRAPH_IRI",
+    "PATHS_SERVICE_IRI",
+    "PATHS_START_GRAPH_IRI",
+    "PATHS_VIA_GRAPH_IRI",
+    "QueryEngine",
+    "QueryEngineFactory",
+    "SparqlVariable",
+    "UnsupportedPathTermError",
+    "parsePathQuery",
+    "parsePathServiceQuery"
+  ]
+}

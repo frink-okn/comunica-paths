@@ -16,6 +16,7 @@ import { parsePathServiceQuery } from './service.js';
 import { parsePathQuery } from './syntax.js';
 import type {
   BindingsQueryEngine,
+  BindingsStream,
   IPathQueryEngine,
   PathQueryEngineOptions,
   PathQueryExecutionOptions,
@@ -647,6 +648,25 @@ implements IPathQueryEngine<QueryContext> {
     context: QueryContext | undefined,
     signal: AbortSignal | undefined,
   ): AsyncIterable<Bindings> {
+    if (this.engine.queryBindingsWithBindings) {
+      const query = compileQuery(template);
+      for (const batch of batches(terms, this.batchSize)) {
+        const frontierBindings = batch.map((term) => {
+          const seed = bindingSeeds.get(term);
+          if (!seed) {
+            throw new InvalidPathQueryError('Internal path state lost the bindings for a frontier node');
+          }
+          return bindOnly(seed, variable, term);
+        });
+        const stream = await abortable(
+          this.engine.queryBindingsWithBindings(query, variable, frontierBindings, context),
+          signal,
+        );
+        yield* consumeBindingsStream(stream, signal);
+      }
+      return;
+    }
+
     let serializable: Term[] = [];
     const blankNodeQuery = compileInitialBindingQuery(template, variable);
     const flushSerializable = async function*(engine: PathQueryEngine<QueryContext>): AsyncIterable<Bindings> {
@@ -689,21 +709,28 @@ implements IPathQueryEngine<QueryContext> {
   ): AsyncIterable<Bindings> {
     throwIfCancelled(signal);
     const stream = await abortable(this.engine.queryBindings(query, context), signal);
-    const iterator = stream[Symbol.asyncIterator]();
-    let done = false;
+    yield* consumeBindingsStream(stream, signal);
+  }
+}
 
-    try {
-      while (!done) {
-        const next = await abortable(iterator.next(), signal, () => stream.destroy(new PathQueryCancelledError()));
-        done = Boolean(next.done);
-        if (!next.done) {
-          yield next.value;
-        }
+async function* consumeBindingsStream(
+  stream: BindingsStream,
+  signal: AbortSignal | undefined,
+): AsyncIterable<Bindings> {
+  const iterator = stream[Symbol.asyncIterator]();
+  let done = false;
+
+  try {
+    while (!done) {
+      const next = await abortable(iterator.next(), signal, () => stream.destroy(new PathQueryCancelledError()));
+      done = Boolean(next.done);
+      if (!next.done) {
+        yield next.value;
       }
-    } finally {
-      if (!done) {
-        stream.destroy();
-      }
+    }
+  } finally {
+    if (!done) {
+      stream.destroy();
     }
   }
 }
