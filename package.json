@@ -25,6 +25,7 @@
     "test:live": "npm run build && node scripts/live-smoke.mjs"
   },
   "dependencies": {
+    "@comunica/types": "^5.3.0",
     "@rdfjs/term-map": "^2.0.2",
     "@rdfjs/term-set": "^2.0.3",
     "@rdfjs/types": "^2.0.1",

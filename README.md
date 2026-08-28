@@ -26,9 +26,10 @@ const query = {
 ```
 
 The executor compiles each traversal frontier into ordinary SPARQL and submits
-it through the injected engine's `queryBindings` method. That makes stock Comunica and other
-configured Comunica engines usable without coupling this package to their Components.js
-configuration.
+it through the injected Comunica engine's `queryBindings` method. The generated queries expose
+the frontier as a `VALUES` join, so the engine's configured optimizer and join actors still
+choose how the VIA and END patterns are evaluated. This works with stock Comunica as well as
+custom engine configurations without coupling this package to their Components.js wiring.
 
 ```ts
 import { QueryEngine } from '@comunica/query-sparql';
@@ -55,13 +56,16 @@ for await (const path of paths) {
    limits so cycles cannot run forever.
 6. Propagate cancellation and downstream backpressure to every active Comunica stream.
 
+Breadth-first depth is the only orchestration barrier: it is needed to know that a discovered
+route is shortest. Within a depth, frontier expansion and endpoint matching remain ordinary
+SPARQL joins planned and executed by Comunica.
+
 RDF terms are keyed with RDF/JS term-aware collections—not by `.value`—so named nodes,
 blank nodes, language strings, datatypes, and RDF-star terms cannot collide in traversal state.
-
-Blank-node identity cannot be carried from one independent SPARQL request to the next with
-`VALUES`. A blank node may occur in retained edge bindings, but traversal fails explicitly if
-one must become a later frontier or be tested by an END pattern. This avoids silently treating
-a query blank-node label as an identity token.
+Ordinary terms are batched through `VALUES`. Because SPARQL cannot express a blank node as a
+portable `VALUES` constant, blank-node frontiers are instead supplied with Comunica's public
+`initialBindings` context option. Comunica then retains and checks the source scope of those
+terms through its normal query-source skolemization layer.
 
 ## Syntax
 

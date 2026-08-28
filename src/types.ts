@@ -1,3 +1,8 @@
+import type {
+  BindingsStream as ComunicaBindingsStream,
+  IQueryEngine,
+  QueryStringContext,
+} from '@comunica/types';
 import type { Bindings, Term } from '@rdfjs/types';
 
 /** A SPARQL variable written in its query-string form. */
@@ -71,14 +76,11 @@ export interface PathResult {
  * The small structural subset of Comunica needed by the path executor.
  * Stock and custom-configured Comunica engines satisfy it.
  */
-export interface BindingsStream extends AsyncIterable<Bindings> {
-  /** Comunica streams expose destroy; other compatible engines may omit it. */
-  destroy?(error?: Error): void;
-}
+export type BindingsStream = ComunicaBindingsStream;
 
-export interface BindingsQueryEngine<QueryContext = unknown> {
-  queryBindings(query: string, context?: QueryContext): Promise<BindingsStream>;
-}
+/** The public portion of a Comunica query engine used by this extension. */
+export type BindingsQueryEngine<QueryContext extends QueryStringContext = QueryStringContext> =
+  Pick<IQueryEngine<QueryContext>, 'queryBindings'>;
 
 export interface PathQueryEngineOptions {
   /** Maximum number of RDF terms placed in a generated VALUES clause. */
@@ -91,7 +93,7 @@ export interface PathQueryExecutionOptions {
 }
 
 /** Public execution contract; its implementation remains outside Comunica's algebra. */
-export interface IPathQueryEngine<QueryContext = unknown> {
+export interface IPathQueryEngine<QueryContext extends QueryStringContext = QueryStringContext> {
   queryPaths(
     spec: PathQuerySpec,
     context?: QueryContext,

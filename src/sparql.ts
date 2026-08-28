@@ -51,6 +51,27 @@ export function compileQuery(template: SelectQuery): string {
   return generator.stringify(template);
 }
 
+export function compileInitialBindingQuery(
+  template: SelectQuery,
+  variable: SparqlVariable,
+): { bindingVariable: SparqlVariable; query: string } {
+  const templateText = compileQuery(template);
+  let suffix = 0;
+  let bindingVariable: SparqlVariable;
+  do {
+    bindingVariable = `?__comunica_paths_bound_${suffix++}`;
+  } while (templateText.includes(bindingVariable));
+
+  const constraint = compilePattern(undefined, `FILTER(sameTerm(${variable}, ${bindingVariable}))`);
+  return {
+    bindingVariable,
+    query: compileQuery({
+      ...template,
+      where: [ ...(template.where ?? []), ...(constraint.where ?? []) ],
+    }),
+  };
+}
+
 export function serializePatterns(patterns: Pattern[]): string {
   const query = generator.stringify({
     type: 'query',

@@ -144,6 +144,55 @@ describe('shortest path execution', () => {
     assert.ok(frontierQueries.every(({ parsed }) => parsed.where[0].values.length === 1));
   });
 
+  it('carries blank-node frontiers through Comunica initial bindings', async () => {
+    const left = {
+      type: 'serialized',
+      value: `
+        <${EX}root> <${EX}edge> _:shared .
+        _:shared <${EX}edge> <${EX}end> .
+      `,
+      mediaType: 'application/n-triples',
+      baseIRI: `${EX}blank-left`,
+    };
+    const right = {
+      type: 'serialized',
+      value: `_:shared <${EX}edge> <${EX}wrong> .`,
+      mediaType: 'application/n-triples',
+      baseIRI: `${EX}blank-right`,
+    };
+    const engine = new PathQueryEngine(new QueryEngine());
+    const paths = await collect(engine.queryPaths(spec({
+      start: { pattern: 'VALUES ?start { ex:root }', node: '?start' },
+      end: { pattern: 'VALUES ?end { ex:end ex:wrong }', node: '?end' },
+      maxDepth: 2,
+    }), { sources: [ left, right ] }));
+
+    assert.equal(paths.length, 1);
+    assert.equal(paths[0].nodes[1].termType, 'BlankNode');
+    assert.equal(paths[0].nodes[2].value, `${EX}end`);
+  });
+
+  it('matches blank-node END candidates through Comunica initial bindings', async () => {
+    const source = {
+      type: 'serialized',
+      value: `
+        <${EX}root> <${EX}edge> _:target .
+        _:target <${EX}target> true .
+      `,
+      mediaType: 'application/n-triples',
+      baseIRI: `${EX}blank-end`,
+    };
+    const engine = new PathQueryEngine(new QueryEngine());
+    const paths = await collect(engine.queryPaths(spec({
+      start: { pattern: 'VALUES ?start { ex:root }', node: '?start' },
+      end: { pattern: '?end ex:target true', node: '?end' },
+      maxDepth: 1,
+    }), { sources: [ source ] }));
+
+    assert.equal(paths.length, 1);
+    assert.equal(paths[0].nodes[1].termType, 'BlankNode');
+  });
+
   it('rejects malformed path specifications before querying', async () => {
     const engine = new PathQueryEngine(new QueryEngine());
     await assert.rejects(

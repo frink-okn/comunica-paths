@@ -1,10 +1,17 @@
 import TermMap from '@rdfjs/term-map';
 import TermSet from '@rdfjs/term-set';
+import type { QueryStringContext } from '@comunica/types';
 import type { Bindings, Term } from '@rdfjs/types';
 import type { SelectQuery } from 'sparqljs';
 import { compatibleBindings, getBinding } from './bindings.js';
 import { InvalidPathQueryError, PathQueryCancelledError } from './errors.js';
-import { compilePattern, compileQuery, compileValuesQuery, validateSparqlVariable } from './sparql.js';
+import {
+  compileInitialBindingQuery,
+  compilePattern,
+  compileQuery,
+  compileValuesQuery,
+  validateSparqlVariable,
+} from './sparql.js';
 import { parsePathServiceQuery } from './service.js';
 import { parsePathQuery } from './syntax.js';
 import type {
@@ -65,7 +72,8 @@ const DEFAULT_BATCH_SIZE = 128;
  * injected engine remains responsible for source selection, joins,
  * federation, reasoning, and physical query planning.
  */
-export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine<QueryContext> {
+export class PathQueryEngine<QueryContext extends QueryStringContext = QueryStringContext>
+implements IPathQueryEngine<QueryContext> {
   private readonly batchSize: number;
 
   public constructor(
@@ -133,8 +141,9 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
     context: QueryContext | undefined,
     signal: AbortSignal | undefined,
   ): AsyncIterable<PathResult> {
+    const bindingSeeds = new TermMap<Term, Bindings>();
     const roots = templates.start ?
-      await this.loadRoots(templates.start, spec.start.node, context, signal) :
+      await this.loadRoots(templates.start, spec.start.node, bindingSeeds, context, signal) :
       new TermMap<Term, RootInfo>();
     const distances = new TermMap<Term, TermMap<Term, number>>();
     const predecessors = new TermMap<Term, TermMap<Term, Predecessor[]>>();
@@ -156,6 +165,7 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
         distances,
         predecessors,
         cycleDistances,
+        bindingSeeds,
         context,
         signal,
       );
@@ -168,6 +178,7 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
         roots,
         predecessors,
         endpointCache,
+        bindingSeeds,
         context,
         signal,
       );
@@ -186,6 +197,7 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
         distances,
         predecessors,
         cycleDistances,
+        bindingSeeds,
         context,
         signal,
       );
@@ -196,6 +208,7 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
         roots,
         predecessors,
         endpointCache,
+        bindingSeeds,
         context,
         signal,
       );
@@ -210,8 +223,9 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
     context: QueryContext | undefined,
     signal: AbortSignal | undefined,
   ): AsyncIterable<PathResult> {
+    const bindingSeeds = new TermMap<Term, Bindings>();
     const roots = templates.start ?
-      await this.loadRoots(templates.start, spec.start.node, context, signal) :
+      await this.loadRoots(templates.start, spec.start.node, bindingSeeds, context, signal) :
       new TermMap<Term, RootInfo>();
     const endpointCache = new TermMap<Term, EndpointMatches | null>();
     let frontier = new TermMap<Term, AllPathState[]>();
@@ -222,17 +236,42 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
         frontier.set(root, [{ root, current: root, nodes: [ root ], steps: [] }]);
       }
     } else {
-      const firstLayer = await this.expandAllUnconstrained(templates.via, spec, roots, context, signal);
+      const firstLayer = await this.expandAllUnconstrained(
+        templates.via,
+        spec,
+        roots,
+        bindingSeeds,
+        context,
+        signal,
+      );
       frontier = firstLayer.frontier;
       depth = 1;
-      yield* this.emitAllLayer(firstLayer, templates.end, spec, roots, endpointCache, context, signal);
+      yield* this.emitAllLayer(
+        firstLayer,
+        templates.end,
+        spec,
+        roots,
+        endpointCache,
+        bindingSeeds,
+        context,
+        signal,
+      );
     }
 
     const maxDepth = spec.maxDepth ?? Number.POSITIVE_INFINITY;
     while (frontier.size > 0 && depth < maxDepth) {
       throwIfCancelled(signal);
-      const layer = await this.expandAllFrontier(frontier, templates.via, spec, context, signal);
-      yield* this.emitAllLayer(layer, templates.end, spec, roots, endpointCache, context, signal);
+      const layer = await this.expandAllFrontier(frontier, templates.via, spec, bindingSeeds, context, signal);
+      yield* this.emitAllLayer(
+        layer,
+        templates.end,
+        spec,
+        roots,
+        endpointCache,
+        bindingSeeds,
+        context,
+        signal,
+      );
       frontier = layer.frontier;
       depth++;
     }
@@ -249,12 +288,14 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
   private async loadRoots(
     template: SelectQuery,
     variable: SparqlVariable,
+    bindingSeeds: TermMap<Term, Bindings>,
     context: QueryContext | undefined,
     signal: AbortSignal | undefined,
   ): Promise<TermMap<Term, RootInfo>> {
     const roots = new TermMap<Term, RootInfo>();
     for await (const bindings of this.queryBindings(compileQuery(template), context, signal)) {
       const term = requireBinding(bindings, variable, 'START');
+      rememberBinding(bindingSeeds, term, bindings);
       const existing = roots.get(term);
       if (existing) {
         existing.bindings!.push(bindings);
@@ -272,6 +313,7 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
     distances: TermMap<Term, TermMap<Term, number>>,
     predecessors: TermMap<Term, TermMap<Term, Predecessor[]>>,
     cycleDistances: TermMap<Term, number>,
+    bindingSeeds: TermMap<Term, Bindings>,
     context: QueryContext | undefined,
     signal: AbortSignal | undefined,
   ): Promise<ShortestLayer> {
@@ -283,6 +325,8 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
     for await (const bindings of this.queryBindings(compileQuery(via), context, signal)) {
       const from = requireBinding(bindings, spec.via.from, 'VIA');
       const to = requireBinding(bindings, spec.via.to, 'VIA');
+      rememberBinding(bindingSeeds, from, bindings);
+      rememberBinding(bindingSeeds, to, bindings);
       if (!roots.has(from)) {
         roots.set(from, {});
         getOrCreateTermMap(distances, from).set(from, 0);
@@ -311,35 +355,41 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
     distances: TermMap<Term, TermMap<Term, number>>,
     predecessors: TermMap<Term, TermMap<Term, Predecessor[]>>,
     cycleDistances: TermMap<Term, number>,
+    bindingSeeds: TermMap<Term, Bindings>,
     context: QueryContext | undefined,
     signal: AbortSignal | undefined,
   ): Promise<ShortestLayer> {
     const layer = new ShortestLayer();
-    for (const terms of batches([ ...frontier.keys() ], this.batchSize)) {
-      const query = compileValuesQuery(via, spec.via.from, terms);
-      for await (const bindings of this.queryBindings(query, context, signal)) {
-        const from = requireBinding(bindings, spec.via.from, 'VIA');
-        const to = requireBinding(bindings, spec.via.to, 'VIA');
-        const matchingRoots = frontier.get(from);
-        if (!matchingRoots) {
-          throw new InvalidPathQueryError('VIA produced a start node outside the supplied frontier');
+    for await (const bindings of this.queryConstrained(
+      via,
+      spec.via.from,
+      [ ...frontier.keys() ],
+      bindingSeeds,
+      context,
+      signal,
+    )) {
+      const from = requireBinding(bindings, spec.via.from, 'VIA');
+      const to = requireBinding(bindings, spec.via.to, 'VIA');
+      rememberBinding(bindingSeeds, to, bindings);
+      const matchingRoots = frontier.get(from);
+      if (!matchingRoots) {
+        throw new InvalidPathQueryError('VIA produced a start node outside the supplied frontier');
+      }
+      for (const root of matchingRoots) {
+        if (!roots.has(root)) {
+          throw new InvalidPathQueryError('Internal path state lost its START binding');
         }
-        for (const root of matchingRoots) {
-          if (!roots.has(root)) {
-            throw new InvalidPathQueryError('Internal path state lost its START binding');
-          }
-          this.discoverShortestEdge(
-            root,
-            from,
-            to,
-            bindings,
-            depth,
-            layer,
-            distances,
-            predecessors,
-            cycleDistances,
-          );
-        }
+        this.discoverShortestEdge(
+          root,
+          from,
+          to,
+          bindings,
+          depth,
+          layer,
+          distances,
+          predecessors,
+          cycleDistances,
+        );
       }
     }
     return layer;
@@ -389,6 +439,7 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
     roots: TermMap<Term, RootInfo>,
     predecessors: TermMap<Term, TermMap<Term, Predecessor[]>>,
     endpointCache: TermMap<Term, EndpointMatches | null>,
+    bindingSeeds: TermMap<Term, Bindings>,
     context: QueryContext | undefined,
     signal: AbortSignal | undefined,
   ): AsyncIterable<PathResult> {
@@ -397,6 +448,7 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
       end,
       spec.end.node,
       endpointCache,
+      bindingSeeds,
       context,
       signal,
     );
@@ -427,6 +479,7 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
     via: SelectQuery,
     spec: PathQuerySpec,
     roots: TermMap<Term, RootInfo>,
+    bindingSeeds: TermMap<Term, Bindings>,
     context: QueryContext | undefined,
     signal: AbortSignal | undefined,
   ): Promise<AllLayer> {
@@ -438,6 +491,8 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
     for await (const bindings of this.queryBindings(compileQuery(via), context, signal)) {
       const from = requireBinding(bindings, spec.via.from, 'VIA');
       const to = requireBinding(bindings, spec.via.to, 'VIA');
+      rememberBinding(bindingSeeds, from, bindings);
+      rememberBinding(bindingSeeds, to, bindings);
       if (!roots.has(from)) {
         roots.set(from, {});
       }
@@ -460,35 +515,41 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
     frontier: TermMap<Term, AllPathState[]>,
     via: SelectQuery,
     spec: PathQuerySpec,
+    bindingSeeds: TermMap<Term, Bindings>,
     context: QueryContext | undefined,
     signal: AbortSignal | undefined,
   ): Promise<AllLayer> {
     const layer = new AllLayer();
-    for (const terms of batches([ ...frontier.keys() ], this.batchSize)) {
-      const query = compileValuesQuery(via, spec.via.from, terms);
-      for await (const bindings of this.queryBindings(query, context, signal)) {
-        const from = requireBinding(bindings, spec.via.from, 'VIA');
-        const to = requireBinding(bindings, spec.via.to, 'VIA');
-        const prefixes = frontier.get(from);
-        if (!prefixes) {
-          throw new InvalidPathQueryError('VIA produced a start node outside the supplied frontier');
+    for await (const bindings of this.queryConstrained(
+      via,
+      spec.via.from,
+      [ ...frontier.keys() ],
+      bindingSeeds,
+      context,
+      signal,
+    )) {
+      const from = requireBinding(bindings, spec.via.from, 'VIA');
+      const to = requireBinding(bindings, spec.via.to, 'VIA');
+      rememberBinding(bindingSeeds, to, bindings);
+      const prefixes = frontier.get(from);
+      if (!prefixes) {
+        throw new InvalidPathQueryError('VIA produced a start node outside the supplied frontier');
+      }
+      for (const prefix of prefixes) {
+        const repeated = prefix.nodes.some(node => node.equals(to));
+        if (repeated && !to.equals(prefix.root)) {
+          continue;
         }
-        for (const prefix of prefixes) {
-          const repeated = prefix.nodes.some(node => node.equals(to));
-          if (repeated && !to.equals(prefix.root)) {
-            continue;
-          }
-          const state: AllPathState = {
-            root: prefix.root,
-            current: to,
-            nodes: [ ...prefix.nodes, to ],
-            steps: [ ...prefix.steps, { from, to, bindings } ],
-          };
-          if (repeated) {
-            layer.addCycle(state);
-          } else {
-            layer.addPath(state);
-          }
+        const state: AllPathState = {
+          root: prefix.root,
+          current: to,
+          nodes: [ ...prefix.nodes, to ],
+          steps: [ ...prefix.steps, { from, to, bindings } ],
+        };
+        if (repeated) {
+          layer.addCycle(state);
+        } else {
+          layer.addPath(state);
         }
       }
     }
@@ -501,6 +562,7 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
     spec: PathQuerySpec,
     roots: TermMap<Term, RootInfo>,
     endpointCache: TermMap<Term, EndpointMatches | null>,
+    bindingSeeds: TermMap<Term, Bindings>,
     context: QueryContext | undefined,
     signal: AbortSignal | undefined,
   ): AsyncIterable<PathResult> {
@@ -509,6 +571,7 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
       end,
       spec.end.node,
       endpointCache,
+      bindingSeeds,
       context,
       signal,
     );
@@ -535,6 +598,7 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
     end: SelectQuery | undefined,
     variable: SparqlVariable,
     cache: TermMap<Term, EndpointMatches | null>,
+    bindingSeeds: TermMap<Term, Bindings>,
     context: QueryContext | undefined,
     signal: AbortSignal | undefined,
   ): Promise<TermMap<Term, EndpointMatches | null>> {
@@ -547,22 +611,75 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
     }
 
     const unknown = [ ...candidates ].filter(candidate => !cache.has(candidate));
-    for (const terms of batches(unknown, this.batchSize)) {
-      for (const term of terms) {
-        cache.set(term, null);
-      }
-      const query = compileValuesQuery(end, variable, terms);
-      for await (const bindings of this.queryBindings(query, context, signal)) {
-        const term = requireBinding(bindings, variable, 'END');
-        const existing = cache.get(term);
-        if (existing) {
-          existing.bindings!.push(bindings);
-        } else {
-          cache.set(term, { bindings: [ bindings ] });
-        }
+    for (const term of unknown) {
+      cache.set(term, null);
+    }
+    for await (const bindings of this.queryConstrained(
+      end,
+      variable,
+      unknown,
+      bindingSeeds,
+      context,
+      signal,
+    )) {
+      const term = requireBinding(bindings, variable, 'END');
+      const existing = cache.get(term);
+      if (existing) {
+        existing.bindings!.push(bindings);
+      } else {
+        cache.set(term, { bindings: [ bindings ] });
       }
     }
     return cache;
+  }
+
+  /**
+   * Join a frontier with a standard graph pattern. Ordinary RDF terms remain in
+   * batched VALUES clauses so Comunica can plan the join as a whole. Blank nodes
+   * are passed as initial bindings: Comunica can then retain their source scope
+   * and deskolemize them only for the source that produced them.
+   */
+  private async *queryConstrained(
+    template: SelectQuery,
+    variable: SparqlVariable,
+    terms: readonly Term[],
+    bindingSeeds: TermMap<Term, Bindings>,
+    context: QueryContext | undefined,
+    signal: AbortSignal | undefined,
+  ): AsyncIterable<Bindings> {
+    let serializable: Term[] = [];
+    const blankNodeQuery = compileInitialBindingQuery(template, variable);
+    const flushSerializable = async function*(engine: PathQueryEngine<QueryContext>): AsyncIterable<Bindings> {
+      if (serializable.length === 0) {
+        return;
+      }
+      const pending = serializable;
+      serializable = [];
+      const query = compileValuesQuery(template, variable, pending);
+      yield* engine.queryBindings(query, context, signal);
+    };
+
+    for (const term of terms) {
+      if (term.termType !== 'BlankNode') {
+        serializable.push(term);
+        if (serializable.length === this.batchSize) {
+          yield* flushSerializable(this);
+        }
+        continue;
+      }
+
+      yield* flushSerializable(this);
+      const seed = bindingSeeds.get(term);
+      if (!seed) {
+        throw new InvalidPathQueryError('Internal path state lost the bindings for a blank node');
+      }
+      const initialBindings = bindOnly(seed, blankNodeQuery.bindingVariable, term);
+      const boundContext = contextWithInitialBindings(context, initialBindings);
+      if (boundContext) {
+        yield* this.queryBindings(blankNodeQuery.query, boundContext, signal);
+      }
+    }
+    yield* flushSerializable(this);
   }
 
   private async *queryBindings(
@@ -577,7 +694,7 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
 
     try {
       while (!done) {
-        const next = await abortable(iterator.next(), signal, () => stream.destroy?.(new PathQueryCancelledError()));
+        const next = await abortable(iterator.next(), signal, () => stream.destroy(new PathQueryCancelledError()));
         done = Boolean(next.done);
         if (!next.done) {
           yield next.value;
@@ -585,11 +702,7 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
       }
     } finally {
       if (!done) {
-        if (stream.destroy) {
-          stream.destroy();
-        } else {
-          void iterator.return?.();
-        }
+        stream.destroy();
       }
     }
   }
@@ -689,6 +802,31 @@ function addFrontierState(frontier: TermMap<Term, TermSet<Term>>, node: Term, ro
     frontier.set(node, roots);
   }
   roots.add(root);
+}
+
+function rememberBinding(bindingSeeds: TermMap<Term, Bindings>, term: Term, bindings: Bindings): void {
+  if (!bindingSeeds.has(term)) {
+    bindingSeeds.set(term, bindings);
+  }
+}
+
+function bindOnly(bindings: Bindings, variable: SparqlVariable, term: Term): Bindings {
+  let initialBindings = bindings;
+  for (const key of [ ...bindings.keys() ]) {
+    initialBindings = initialBindings.delete(key);
+  }
+  return initialBindings.set(variable.slice(1), term);
+}
+
+function contextWithInitialBindings<QueryContext extends QueryStringContext>(
+  context: QueryContext | undefined,
+  bindings: Bindings,
+): QueryContext | undefined {
+  const initialBindings = context?.initialBindings ? context.initialBindings.merge(bindings) : bindings;
+  if (!initialBindings) {
+    return undefined;
+  }
+  return { ...context, initialBindings } as QueryContext;
 }
 
 function* batches<T>(values: readonly T[], size: number): Iterable<readonly T[]> {
