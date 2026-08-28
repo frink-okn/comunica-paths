@@ -52,11 +52,7 @@ export function parsePathServiceQuery(input: string): PathQuerySpec {
       node: end,
       ...(endPatterns ? { pattern: serializePatterns(endPatterns) } : {}),
     },
-    via: {
-      from: start,
-      to: end,
-      pattern: serializePatterns(viaPatterns),
-    },
+    via: { pattern: serializePatterns(viaPatterns) },
     mode,
     cyclic,
     ...(maxDepth === undefined ? {} : { maxDepth }),

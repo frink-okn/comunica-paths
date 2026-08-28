@@ -24,7 +24,7 @@ function spec(overrides = {}) {
     prologue: `PREFIX ex: <${EX}>`,
     start: { pattern: 'VALUES ?start { ex:a }', node: '?start' },
     end: { pattern: '?end ex:target true; ex:rank ?rank', node: '?end' },
-    via: { pattern: '?from ex:edge ?to', from: '?from', to: '?to' },
+    via: { pattern: '?start ex:edge ?end' },
     ...overrides,
   };
 }
@@ -136,12 +136,12 @@ describe('shortest path execution', () => {
         const fanOut = /VALUES[^}]*\bstart\b/u.test(query) || query.includes(`<${EX}a>`);
         return sparqlJson([ 'from', 'to' ], fanOut && !query.includes(`<${EX}f1>`) ?
           [ 'f1', 'f2', 'f3' ].map(to => ({
-            from: { type: 'uri', value: `${EX}a` },
-            to: { type: 'uri', value: `${EX}${to}` },
+            start: { type: 'uri', value: `${EX}a` },
+            end: { type: 'uri', value: `${EX}${to}` },
           })) :
           [ 'f1', 'f2', 'f3' ].map(from => ({
-            from: { type: 'uri', value: `${EX}${from}` },
-            to: { type: 'uri', value: `${EX}d` },
+            start: { type: 'uri', value: `${EX}${from}` },
+            end: { type: 'uri', value: `${EX}d` },
           })));
       }
       return sparqlJson([ 'end' ], [{ end: { type: 'uri', value: `${EX}d` }}]);
@@ -151,7 +151,7 @@ describe('shortest path execution', () => {
       prologue: `PREFIX ex: <${EX}>`,
       start: { pattern: 'VALUES ?start { ex:a }', node: '?start' },
       end: { pattern: 'VALUES ?end { ex:d }', node: '?end' },
-      via: { pattern: '?from ex:edge ?to', from: '?from', to: '?to' },
+      via: { pattern: '?start ex:edge ?end' },
     }, { sources: [{ type: 'sparql', value: `${EX}sparql` }], fetch }));
 
     assert.deepEqual(paths.map(nodePath).sort(), [ 'a-f1-d', 'a-f2-d', 'a-f3-d' ]);
@@ -255,7 +255,7 @@ describe('shortest path execution', () => {
   it('rejects malformed path specifications before querying', async () => {
     const engine = new PathsQueryEngine();
     await assert.rejects(
-      async () => collect(await engine.queryPaths(spec({ via: { pattern: '', from: '?x', to: '?x' } }), { sources })),
+      async () => collect(await engine.queryPaths(spec({ via: { pattern: '' } }), { sources })),
       InvalidPathQueryError,
     );
   });

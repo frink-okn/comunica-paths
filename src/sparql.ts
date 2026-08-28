@@ -63,6 +63,25 @@ export function serializeDataset(dataset: SelectQuery['from']): string | undefin
   return serialized || undefined;
 }
 
+/** Whether a parsed SPARQL structure mentions the named variable anywhere. */
+export function containsVariable(value: unknown, name: string, seen = new Set<object>()): boolean {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  if (seen.has(value)) {
+    return false;
+  }
+  seen.add(value);
+  if ('termType' in value && value.termType === 'Variable' && 'value' in value && value.value === name) {
+    return true;
+  }
+  if (Array.isArray(value)) {
+    return value.some(entry => containsVariable(entry, name, seen));
+  }
+  return Object.entries(value).some(([ key, entry ]) =>
+    key === `?${name}` || key === `$${name}` || containsVariable(entry, name, seen));
+}
+
 export function validateSparqlVariable(variable: string, label: string): void {
   try {
     const parsed = parser.parse(`SELECT ${variable} WHERE { }`);

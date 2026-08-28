@@ -93,10 +93,10 @@ export class PathOperations {
     private readonly startPattern: IPathPattern | undefined,
     private readonly viaPattern: IPathPattern,
     private readonly endPattern: IPathPattern | undefined,
+    /** The source of a traversal step, and the node a START solution binds. */
     public readonly startVariable: RDF.Variable,
+    /** The target of a traversal step, and the node an END solution binds. */
     public readonly endVariable: RDF.Variable,
-    public readonly viaFromVariable: RDF.Variable,
-    public readonly viaToVariable: RDF.Variable,
     /** The finite END target set when END is a bare `VALUES` block, otherwise undefined. */
     public readonly fixedEndNodes: TermSet<RDF.Term> | undefined,
   ) {
@@ -139,8 +139,6 @@ export class PathOperations {
       end,
       dataFactory.variable(spec.start.node.slice(1)),
       endVariable,
-      dataFactory.variable(spec.via.from.slice(1)),
-      dataFactory.variable(spec.via.to.slice(1)),
       end ? readFixedNodes(end.operation, endVariable) : undefined,
     );
   }
@@ -165,7 +163,7 @@ export class PathOperations {
 
   /** Evaluate the VIA pattern for every frontier node in one mediated join. */
   public queryViaFrom(terms: readonly RDF.Term[], depth: number): AsyncIterable<RDF.Bindings> {
-    return this.queryConstrained(this.viaPattern, this.viaFromVariable, terms, 'paths-via', depth);
+    return this.queryConstrained(this.viaPattern, this.startVariable, terms, 'paths-via', depth);
   }
 
   /** Evaluate the END pattern for every candidate endpoint in one mediated join. */

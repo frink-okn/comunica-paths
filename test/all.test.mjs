@@ -24,7 +24,7 @@ function spec(overrides = {}) {
     prologue: `PREFIX ex: <${EX}>`,
     start: { pattern: 'VALUES ?start { ex:a }', node: '?start' },
     end: { pattern: 'VALUES ?end { ex:d }', node: '?end' },
-    via: { pattern: '?from ex:edge ?to', from: '?from', to: '?to' },
+    via: { pattern: '?start ex:edge ?end' },
     mode: 'all',
     ...overrides,
   };
@@ -119,7 +119,7 @@ describe('all and cyclic path execution', () => {
       prologue: `PREFIX ex: <${EX}>`,
       start: { pattern: 'VALUES ?from { ex:a }', node: '?from' },
       end: { node: '?to' },
-      via: { pattern: '?from ex:edge ?to', from: '?from', to: '?to' },
+      via: { pattern: '?from ex:edge ?to' },
     }, {
       sources: [{ type: 'sparql', value: `${EX}sparql` }],
       fetch,

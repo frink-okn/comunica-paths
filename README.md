@@ -101,14 +101,14 @@ const query = {
   prologue: 'PREFIX ex: <https://example.org/>',
   start: { pattern: '?start a ex:Person', node: '?start' },
   end: { pattern: '?end a ex:Place', node: '?end' },
-  via: {
-    pattern: '?from ex:knows|ex:locatedIn ?to',
-    from: '?from',
-    to: '?to',
-  },
+  via: { pattern: '?start ex:knows|ex:locatedIn ?end' },
   mode: 'shortest',
 } satisfies PathQuerySpec;
 ```
+
+A VIA pattern names one traversal step using the query's own endpoint variables: START's node
+is the source of a step and END's node is its target, so VIA must bind both. There are no
+separate step variables to declare, and START and END must therefore use different variables.
 
 `ActorQueryPathBfs` parses each embedded START, END, and VIA graph pattern into standard
 Comunica algebra once, and plans it once through the standard optimizer. For each traversal

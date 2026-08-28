@@ -54,7 +54,6 @@ interface AllPathState extends CorePath {
 export class BfsPathTraversal {
   private readonly maxDepth: number;
   private readonly cyclic: boolean;
-  private readonly sameEndpointVariable: boolean;
 
   private readonly roots = new TermMap<RDF.Term, RootInfo>();
   private readonly endpointCache = new TermMap<RDF.Term, EndpointMatches | null>();
@@ -69,7 +68,6 @@ export class BfsPathTraversal {
   ) {
     this.maxDepth = spec.maxDepth ?? Number.POSITIVE_INFINITY;
     this.cyclic = spec.cyclic ?? false;
-    this.sameEndpointVariable = operations.startVariable.equals(operations.endVariable);
   }
 
   /** Emit matching paths, honouring OFFSET and LIMIT. */
@@ -251,7 +249,7 @@ export class BfsPathTraversal {
     if (!this.cyclic) {
       for (const state of layer.states) {
         const endpoint = matches.get(state.node);
-        if (!endpoint || !this.endpointVariablesCompatible(state.root, state.node)) {
+        if (!endpoint) {
           continue;
         }
         for (const path of this.reconstructShortestPaths(state.root, state.node)) {
@@ -336,7 +334,7 @@ export class BfsPathTraversal {
     if (!this.cyclic) {
       for (const state of layer.paths) {
         const endpoint = matches.get(state.current);
-        if (!endpoint || !this.endpointVariablesCompatible(state.root, state.current)) {
+        if (!endpoint) {
           continue;
         }
         yield* this.combineEndpointBindings(state, this.roots.get(state.root), endpoint);
@@ -390,7 +388,7 @@ export class BfsPathTraversal {
     }
     for (const root of this.roots.keys()) {
       for (const endpoint of endpoints) {
-        if ((this.cyclic || this.sameEndpointVariable) && !root.equals(endpoint)) {
+        if (this.cyclic && !root.equals(endpoint)) {
           continue;
         }
         const settled = root.equals(endpoint) ?
@@ -402,10 +400,6 @@ export class BfsPathTraversal {
       }
     }
     return true;
-  }
-
-  private endpointVariablesCompatible(root: RDF.Term, endpoint: RDF.Term): boolean {
-    return !this.sameEndpointVariable || root.equals(endpoint);
   }
 
   private *combineEndpointBindings(
@@ -466,8 +460,8 @@ export class BfsPathTraversal {
 
   private requireStep(bindings: RDF.Bindings): { from: RDF.Term; to: RDF.Term } {
     return {
-      from: this.require(bindings, this.operations.viaFromVariable, 'VIA'),
-      to: this.require(bindings, this.operations.viaToVariable, 'VIA'),
+      from: this.require(bindings, this.operations.startVariable, 'VIA'),
+      to: this.require(bindings, this.operations.endVariable, 'VIA'),
     };
   }
 

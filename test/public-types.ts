@@ -8,7 +8,7 @@ import {
 const spec = {
   start: { pattern: 'VALUES ?from { <urn:a> }', node: '?from' },
   end: { node: '?to' },
-  via: { pattern: '?from <urn:edge> ?to', from: '?from', to: '?to' },
+  via: { pattern: '?start <urn:edge> ?end' },
 } satisfies PathQuerySpec;
 
 const engine = new PathEnabledQueryEngine();

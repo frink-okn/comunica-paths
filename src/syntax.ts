@@ -1,5 +1,5 @@
 import { InvalidPathQueryError } from './errors.js';
-import { compilePattern } from './sparql.js';
+import { validateSpec } from './spec.js';
 import type { PathEndpointPattern, PathQueryMode, PathQuerySpec, SparqlVariable } from './types.js';
 
 const MODIFIERS = [ 'MAX', 'OFFSET', 'LIMIT' ] as const;
@@ -88,14 +88,14 @@ export function parsePathQuery(input: string): PathQuerySpec {
     ...(datasetText ? { dataset: datasetText } : {}),
     start,
     end,
-    via: { pattern: viaPattern, from: start.node, to: end.node },
+    via: { pattern: viaPattern },
     mode,
     ...(cyclic ? { cyclic: true } : {}),
     ...(maxDepth === undefined ? {} : { maxDepth }),
     ...(maxPaths === undefined ? {} : { maxPaths }),
     ...(offset === undefined ? {} : { offset }),
   };
-  validateStandardSparql(spec);
+  validateSpec(spec);
   return spec;
 }
 
@@ -126,45 +126,6 @@ function parseVia(cursor: Cursor): { value: string; braced: boolean } {
   }
   cursor.position = end < 0 ? cursor.input.length : end;
   return { value, braced: false };
-}
-
-function validateStandardSparql(spec: PathQuerySpec): void {
-  const start = spec.start.pattern?.trim();
-  const end = spec.end.pattern?.trim();
-  if (start) {
-    const query = compilePattern(spec.prologue, start, spec.dataset);
-    if (!containsVariable(query, spec.start.node.slice(1))) {
-      throw new InvalidPathQueryError(`START pattern does not mention ${spec.start.node}`);
-    }
-  }
-  if (end) {
-    const query = compilePattern(spec.prologue, end, spec.dataset);
-    if (!containsVariable(query, spec.end.node.slice(1))) {
-      throw new InvalidPathQueryError(`END pattern does not mention ${spec.end.node}`);
-    }
-  }
-  const via = compilePattern(spec.prologue, spec.via.pattern, spec.dataset);
-  if (!containsVariable(via, spec.via.from.slice(1)) || !containsVariable(via, spec.via.to.slice(1))) {
-    throw new InvalidPathQueryError('VIA pattern must mention both endpoint variables');
-  }
-}
-
-function containsVariable(value: unknown, name: string, seen = new Set<object>()): boolean {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-  if (seen.has(value)) {
-    return false;
-  }
-  seen.add(value);
-  if ('termType' in value && value.termType === 'Variable' && 'value' in value && value.value === name) {
-    return true;
-  }
-  if (Array.isArray(value)) {
-    return value.some(entry => containsVariable(entry, name, seen));
-  }
-  return Object.entries(value).some(([ key, entry ]) =>
-    key === `?${name}` || key === `$${name}` || containsVariable(entry, name, seen));
 }
 
 class Cursor {

@@ -24,7 +24,7 @@ it('bounds path explosion while traversing a cyclic graph', async () => {
   for await (const path of await engine.queryPaths({
     start: { pattern: `VALUES ?from { <${EX}0> }`, node: '?from' },
     end: { node: '?to' },
-    via: { pattern: `?from <${EX}edge> ?to`, from: '?from', to: '?to' },
+    via: { pattern: `?from <${EX}edge> ?to` },
     mode: 'all',
     maxDepth: 7,
     maxPaths: 100,

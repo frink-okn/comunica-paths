@@ -20,7 +20,7 @@ function spec(overrides = {}) {
     prologue: `PREFIX ex: <${EX}>`,
     start: { pattern: 'VALUES ?start { ex:a }', node: '?start' },
     end: { pattern: 'VALUES ?end { ex:d }', node: '?end' },
-    via: { pattern: '?from ex:edge ?to', from: '?from', to: '?to' },
+    via: { pattern: '?start ex:edge ?end' },
     ...overrides,
   };
 }
@@ -150,19 +150,19 @@ describe('Components.js path engine', () => {
       let vars;
       let bindings;
       if (query.includes(`<${EX}edge>`)) {
-        vars = [ 'from', 'to' ];
+        vars = [ 'start', 'end' ];
         bindings = query.includes(`<${EX}d>`) ? [] : [
           {
-            from: { type: 'uri', value: `${EX}a` },
-            to: { type: 'uri', value: `${EX}d` },
+            start: { type: 'uri', value: `${EX}a` },
+            end: { type: 'uri', value: `${EX}d` },
           },
           {
-            from: { type: 'uri', value: `${EX}a` },
-            to: { type: 'bnode', value: 'remote-result' },
+            start: { type: 'uri', value: `${EX}a` },
+            end: { type: 'bnode', value: 'remote-result' },
           },
           {
-            from: { type: 'uri', value: `${EX}a` },
-            to: { type: 'uri', value: `${EX}d` },
+            start: { type: 'uri', value: `${EX}a` },
+            end: { type: 'uri', value: `${EX}d` },
           },
         ];
       } else if (query.includes('?start')) {
@@ -191,7 +191,7 @@ describe('Components.js path engine', () => {
     assert.equal(endpointQueries.length, viaQueries.length,
       'source-independent START and END forms should execute locally');
     for (const viaQuery of viaQueries) {
-      assert.match(viaQuery, /VALUES\s+\?from/iu);
+      assert.match(viaQuery, /VALUES\s+\?start/iu);
       assert.doesNotMatch(viaQuery, /\{\s*SELECT\b/iu);
       assert.doesNotMatch(viaQuery, /\bDISTINCT\b/iu);
     }
@@ -213,11 +213,11 @@ describe('Components.js path engine', () => {
       let vars;
       let bindings;
       if (query.includes(`<${EX}cast>`)) {
-        vars = [ 'from', 'work', 'to' ];
+        vars = [ 'start', 'work', 'end' ];
         bindings = [{
-          from: { type: 'uri', value: `${EX}a` },
+          start: { type: 'uri', value: `${EX}a` },
           work: { type: 'uri', value: `${EX}film` },
-          to: { type: 'uri', value: `${EX}d` },
+          end: { type: 'uri', value: `${EX}d` },
         }];
       } else if (query.includes('?start')) {
         vars = [ 'start' ];
@@ -232,11 +232,7 @@ describe('Components.js path engine', () => {
     };
 
     const paths = await collect(await new QueryEngine().queryPaths(spec({
-      via: {
-        pattern: '?work ex:cast ?from . ?work ex:cast ?to',
-        from: '?from',
-        to: '?to',
-      },
+      via: { pattern: '?work ex:cast ?start . ?work ex:cast ?end' },
     }), {
       sources: [{ type: 'sparql', value: `${EX}sparql` }],
       fetch,
@@ -245,7 +241,7 @@ describe('Components.js path engine', () => {
     assert.deepEqual(paths.map(nodePath), [ 'a-d' ], endpointQueries.join('\n---\n'));
     const viaQuery = endpointQueries.find(query => query.includes(`<${EX}cast>`));
     assert.ok(viaQuery);
-    assert.match(viaQuery, /VALUES\s+\?from/iu);
+    assert.match(viaQuery, /VALUES\s+\?start/iu);
     assert.doesNotMatch(viaQuery, /\{\s*SELECT\b/iu);
   });
 
@@ -331,7 +327,9 @@ describe('Components.js path engine', () => {
     );
     assert.equal(parsed.explain, true);
     assert.equal(parsed.type, 'parsed');
-    assert.equal(parsed.data.via.from, '?from');
+    assert.equal(parsed.data.start.node, '?from');
+    assert.match(parsed.data.via.pattern, /\?from\b/u);
+    assert.match(parsed.data.via.pattern, /\?to\b/u);
 
     await assert.rejects(
       engine.explainPaths(spec(), { sources: []}, 'logical'),
@@ -383,11 +381,7 @@ describe('Components.js path engine', () => {
 
   it('submits a multi-pattern local VIA as one join holding the frontier', async () => {
     const explained = await new QueryEngine().explainPaths(spec({
-      via: {
-        pattern: '?work ex:cast ?from . ?work ex:cast ?to . ?work ex:year ?y',
-        from: '?from',
-        to: '?to',
-      },
+      via: { pattern: '?work ex:cast ?start . ?work ex:cast ?end . ?work ex:year ?y' },
     }), {
       sources: [ source(`
         <${EX}w> <${EX}cast> <${EX}a> .
@@ -433,7 +427,7 @@ describe('Components.js path engine', () => {
       prologue: `PREFIX ex: <${EX}>`,
       start: { pattern: 'VALUES ?start { ex:0 }', node: '?start' },
       end: { node: '?end' },
-      via: { pattern: '?from ex:edge ?to', from: '?from', to: '?to' },
+      via: { pattern: '?start ex:edge ?end' },
       mode: 'all',
       maxDepth: 6,
     }, {

@@ -87,7 +87,7 @@ describe('path stream metadata', () => {
       prologue: `PREFIX ex: <${EX}>`,
       start: { pattern: 'VALUES ?start { ex:a }', node: '?start' },
       end: { node: '?end' },
-      via: { pattern: '?from ex:edge ?to', from: '?from', to: '?to' },
+      via: { pattern: '?start ex:edge ?end' },
       mode: 'all',
       maxDepth: 2,
     }, { sources });

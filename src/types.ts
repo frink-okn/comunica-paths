@@ -16,12 +16,16 @@ export interface PathEndpointPattern {
   node: SparqlVariable;
 }
 
-/** A VIA graph pattern and the variables denoting one directed traversal step. */
+/**
+ * A VIA graph pattern, naming one directed traversal step.
+ *
+ * The step's own endpoints are the query's endpoint variables: START's node is
+ * the source of a step and END's node is its target, so the pattern must bind
+ * both. A VIA pattern therefore has no variables of its own to declare.
+ */
 export interface PathViaPattern {
   /** The contents of a standard SPARQL WHERE clause, without the outer braces. */
   pattern: string;
-  from: SparqlVariable;
-  to: SparqlVariable;
 }
 
 export type PathQueryMode = 'shortest' | 'all';

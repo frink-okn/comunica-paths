@@ -47,8 +47,9 @@ describe('PATHS syntax', () => {
     assert.equal(parsed.start.node, '?origin');
     assert.match(parsed.start.pattern, /^VALUES \?origin/u);
     assert.match(parsed.end.pattern, /FILTER/u);
-    assert.equal(parsed.via.from, '?origin');
-    assert.equal(parsed.via.to, '?destination');
+    assert.equal(parsed.end.node, '?destination');
+    assert.match(parsed.via.pattern, /\?origin\b/u);
+    assert.match(parsed.via.pattern, /\?destination\b/u);
     assert.equal(parsed.maxDepth, 7);
     assert.equal(parsed.offset, 2);
     assert.equal(parsed.maxPaths, 3);
@@ -95,7 +96,11 @@ describe('PATHS syntax', () => {
     );
     assert.throws(
       () => parsePathQuery('PATHS START ?s END ?e VIA { ?s <urn:edge> ?other }'),
-      /both endpoint variables/u,
+      /VIA pattern must bind both \?s and \?e/u,
+    );
+    assert.throws(
+      () => parsePathQuery('PATHS START ?x = <urn:a> END ?x VIA { ?x <urn:edge> ?x }'),
+      /START and END must use different variables/u,
     );
     assert.throws(
       () => parsePathQuery('PATHS START ?s { ?s ?p } END ?e VIA ?p'),
