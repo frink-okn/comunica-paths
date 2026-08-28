@@ -74,11 +74,33 @@ MAX LENGTH 8
 LIMIT 20
 ```
 
-A standard-SPARQL `SERVICE` envelope is planned as a second adapter; neither representation
-changes the executor.
+The same request can be tunneled through syntax accepted by an unmodified SPARQL 1.1 parser.
+Reserved named graphs separate the three patterns, and one `VALUES` row carries the variable
+names and traversal options:
+
+```sparql
+PREFIX ex: <https://example.org/>
+PREFIX path: <urn:comunica:paths:>
+SELECT * WHERE {
+  SERVICE <urn:comunica:paths> {
+    GRAPH path:start { VALUES ?from { ex:a } }
+    GRAPH path:end { ?to a ex:Destination }
+    GRAPH path:via { ?from ex:edge ?to }
+    VALUES (?__path_start ?__path_end ?__path_mode ?__path_maxLength) {
+      ("from" "to" "all" 8)
+    }
+  }
+}
+LIMIT 20
+```
+
+`parsePathServiceQuery` decodes this form, while `queryPathService` decodes and executes it.
+This is an application-level tunnel: the reserved SERVICE is intercepted before the query
+is handed to Comunica. The underlying engine sees only the generated standard START, END,
+and VIA bindings queries.
 
 ## Status
 
 The programmatic API supports batched, streaming `shortest`, `all`, and cyclic execution,
-including maximum length, limit, offset, and cancellation. The textual PATHS adapter is
-implemented; the optional standard-SPARQL envelope is the next implementation stage.
+including maximum length, limit, offset, and cancellation. Both the textual PATHS adapter
+and the optional standard-SPARQL SERVICE envelope are implemented.

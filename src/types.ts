@@ -102,4 +102,9 @@ export interface IPathQueryEngine<QueryContext = unknown> {
     context?: QueryContext,
     options?: PathQueryExecutionOptions,
   ): AsyncIterable<PathResult>;
+  queryPathService(
+    query: string,
+    context?: QueryContext,
+    options?: PathQueryExecutionOptions,
+  ): AsyncIterable<PathResult>;
 }

@@ -1,5 +1,12 @@
 import type { Term } from '@rdfjs/types';
-import { Generator, Parser, type SelectQuery, type ValuePatternRow } from 'sparqljs';
+import {
+  Generator,
+  Parser,
+  Wildcard,
+  type Pattern,
+  type SelectQuery,
+  type ValuePatternRow,
+} from 'sparqljs';
 import { InvalidPathQueryError, UnsupportedPathTermError } from './errors.js';
 import type { SparqlVariable } from './types.js';
 
@@ -42,6 +49,40 @@ export function compileValuesQuery(
 
 export function compileQuery(template: SelectQuery): string {
   return generator.stringify(template);
+}
+
+export function serializePatterns(patterns: Pattern[]): string {
+  const query = generator.stringify({
+    type: 'query',
+    queryType: 'SELECT',
+    variables: [ new Wildcard() ],
+    prefixes: {},
+    where: patterns,
+  });
+  const open = query.indexOf('{');
+  const close = query.lastIndexOf('}');
+  if (open < 0 || close < open) {
+    throw new InvalidPathQueryError('Could not serialize a standard SPARQL graph pattern');
+  }
+  return query.slice(open + 1, close).trim();
+}
+
+export function serializeDataset(dataset: SelectQuery['from']): string | undefined {
+  if (!dataset) {
+    return undefined;
+  }
+  const query = generator.stringify({
+    type: 'query',
+    queryType: 'SELECT',
+    variables: [ new Wildcard() ],
+    prefixes: {},
+    from: dataset,
+    where: [],
+  });
+  const select = query.indexOf('SELECT *') + 'SELECT *'.length;
+  const where = query.indexOf('WHERE', select);
+  const serialized = query.slice(select, where).trim();
+  return serialized || undefined;
 }
 
 export function validateSparqlVariable(variable: string, label: string): void {

@@ -5,6 +5,7 @@ import type { SelectQuery } from 'sparqljs';
 import { compatibleBindings, getBinding } from './bindings.js';
 import { InvalidPathQueryError, PathQueryCancelledError } from './errors.js';
 import { compilePattern, compileQuery, compileValuesQuery, validateSparqlVariable } from './sparql.js';
+import { parsePathServiceQuery } from './service.js';
 import { parsePathQuery } from './syntax.js';
 import type {
   BindingsQueryEngine,
@@ -116,6 +117,14 @@ export class PathQueryEngine<QueryContext = unknown> implements IPathQueryEngine
     options?: PathQueryExecutionOptions,
   ): AsyncIterable<PathResult> {
     return this.queryPaths(parsePathQuery(query), context, options);
+  }
+
+  public queryPathService(
+    query: string,
+    context?: QueryContext,
+    options?: PathQueryExecutionOptions,
+  ): AsyncIterable<PathResult> {
+    return this.queryPaths(parsePathServiceQuery(query), context, options);
   }
 
   private async *queryShortest(
