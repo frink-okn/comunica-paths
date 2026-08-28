@@ -1,8 +1,10 @@
 export type {
   BindingsQueryEngine,
+  BindingsStream,
   IPathQueryEngine,
   PathEndpointPattern,
   PathQueryEngineOptions,
+  PathQueryExecutionOptions,
   PathQueryMode,
   PathQuerySpec,
   PathResult,
@@ -10,5 +12,5 @@ export type {
   PathViaPattern,
   SparqlVariable,
 } from './types.js';
-export { InvalidPathQueryError, UnsupportedPathTermError } from './errors.js';
+export { InvalidPathQueryError, PathQueryCancelledError, UnsupportedPathTermError } from './errors.js';
 export { PathQueryEngine } from './PathQueryEngine.js';

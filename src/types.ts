@@ -21,7 +21,7 @@ export interface PathViaPattern {
   to: SparqlVariable;
 }
 
-export type PathQueryMode = 'shortest' | 'all';
+export type PathQueryMode = 'shortest' | 'all' | 'cyclic';
 
 /**
  * Parser-independent representation of a path query.
@@ -41,6 +41,8 @@ export interface PathQuerySpec {
   maxDepth?: number;
   /** Stop after emitting this many paths. Zero emits none. */
   maxPaths?: number;
+  /** Skip this many matching paths before emitting results. */
+  offset?: number;
 }
 
 /** One VIA solution used as an edge in an emitted path. */
@@ -65,8 +67,13 @@ export interface PathResult {
  * The small structural subset of Comunica needed by the path executor.
  * Stock and custom-configured Comunica engines satisfy it.
  */
+export interface BindingsStream extends AsyncIterable<Bindings> {
+  /** Comunica streams expose destroy; other compatible engines may omit it. */
+  destroy?(error?: Error): void;
+}
+
 export interface BindingsQueryEngine<QueryContext = unknown> {
-  queryBindings(query: string, context?: QueryContext): Promise<AsyncIterable<Bindings>>;
+  queryBindings(query: string, context?: QueryContext): Promise<BindingsStream>;
 }
 
 export interface PathQueryEngineOptions {
@@ -74,7 +81,16 @@ export interface PathQueryEngineOptions {
   batchSize?: number;
 }
 
+export interface PathQueryExecutionOptions {
+  /** Cancels traversal and the currently active bindings stream. */
+  signal?: AbortSignal;
+}
+
 /** Public execution contract; its implementation remains outside Comunica's algebra. */
 export interface IPathQueryEngine<QueryContext = unknown> {
-  queryPaths(spec: PathQuerySpec, context?: QueryContext): AsyncIterable<PathResult>;
+  queryPaths(
+    spec: PathQuerySpec,
+    context?: QueryContext,
+    options?: PathQueryExecutionOptions,
+  ): AsyncIterable<PathResult>;
 }

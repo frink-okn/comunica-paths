@@ -12,3 +12,9 @@ export class UnsupportedPathTermError extends Error {
   }
 }
 
+export class PathQueryCancelledError extends Error {
+  public constructor() {
+    super('Path query execution was cancelled');
+    this.name = 'PathQueryCancelledError';
+  }
+}

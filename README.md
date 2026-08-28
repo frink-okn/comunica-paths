@@ -67,5 +67,6 @@ neither representation changes the executor.
 
 ## Status
 
-The programmatic API supports batched, streaming shortest-path execution. `ALL`, textual
-PATHS syntax, and the optional standard-SPARQL envelope are the next implementation stages.
+The programmatic API supports batched, streaming `shortest`, `all`, and `cyclic` execution,
+including `maxDepth`, `maxPaths`, `offset`, and cancellation. Textual PATHS syntax and the
+optional standard-SPARQL envelope are the next implementation stages.
