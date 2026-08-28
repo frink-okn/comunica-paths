@@ -1,14 +1,11 @@
-import type { Term } from '@rdfjs/types';
 import {
   Generator,
   Parser,
   Wildcard,
   type Pattern,
   type SelectQuery,
-  type ValuePatternRow,
 } from 'sparqljs';
-import { InvalidPathQueryError, UnsupportedPathTermError } from './errors.js';
-import type { SparqlVariable } from './types.js';
+import { InvalidPathQueryError } from './errors.js';
 
 const parser = new Parser({ sparqlStar: true });
 const generator = new Generator({ sparqlStar: true });
@@ -30,46 +27,6 @@ export function compilePattern(
     throw new InvalidPathQueryError('A path graph pattern did not compile to a SELECT query');
   }
   return parsed;
-}
-
-export function compileValuesQuery(
-  template: SelectQuery,
-  variable: SparqlVariable,
-  terms: readonly Term[],
-): string {
-  const values: ValuePatternRow[] = terms.map((term) => {
-    assertValuesTerm(term);
-    return { [variable]: term } as ValuePatternRow;
-  });
-  return generator.stringify({
-    ...template,
-    where: [ { type: 'values', values }, ...(template.where ?? []) ],
-  });
-}
-
-export function compileQuery(template: SelectQuery): string {
-  return generator.stringify(template);
-}
-
-export function compileInitialBindingQuery(
-  template: SelectQuery,
-  variable: SparqlVariable,
-): { bindingVariable: SparqlVariable; query: string } {
-  const templateText = compileQuery(template);
-  let suffix = 0;
-  let bindingVariable: SparqlVariable;
-  do {
-    bindingVariable = `?__comunica_paths_bound_${suffix++}`;
-  } while (templateText.includes(bindingVariable));
-
-  const constraint = compilePattern(undefined, `FILTER(sameTerm(${variable}, ${bindingVariable}))`);
-  return {
-    bindingVariable,
-    query: compileQuery({
-      ...template,
-      where: [ ...(template.where ?? []), ...(constraint.where ?? []) ],
-    }),
-  };
 }
 
 export function serializePatterns(patterns: Pattern[]): string {
@@ -115,17 +72,5 @@ export function validateSparqlVariable(variable: string, label: string): void {
     }
   } catch {
     throw new InvalidPathQueryError(`${label} must be a valid SPARQL variable`);
-  }
-}
-
-function assertValuesTerm(term: Term): void {
-  if (term.termType === 'BlankNode') {
-    throw new UnsupportedPathTermError(
-      'A blank node cannot be carried between independent SPARQL queries with VALUES. ' +
-      'Use named nodes for traversable resources.',
-    );
-  }
-  if (term.termType === 'Variable' || term.termType === 'DefaultGraph') {
-    throw new UnsupportedPathTermError(`A ${term.termType} cannot be used as a path node`);
   }
 }

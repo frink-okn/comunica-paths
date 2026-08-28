@@ -1,9 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { describe, it } from 'node:test';
-import { QueryEngine } from '@comunica/query-sparql';
-import { Parser } from 'sparqljs';
-import { InvalidPathQueryError, PathQueryEngine } from '../dist/index.js';
+import { InvalidPathQueryError, QueryEngine as PathsQueryEngine } from '../dist/index.js';
 
 const EX = 'https://example.org/';
 const sources = [
@@ -54,8 +52,8 @@ function bindingValue(bindings, name) {
 
 describe('shortest path execution', () => {
   it('finds every shortest path across a two-source federation', async () => {
-    const engine = new PathQueryEngine(new QueryEngine(), { batchSize: 1 });
-    const paths = await collect(engine.queryPaths(spec(), { sources }));
+    const engine = new PathsQueryEngine();
+    const paths = await collect(await engine.queryPaths(spec(), { sources }));
 
     assert.deepEqual(paths.map(nodePath).sort(), [ 'a-b-d', 'a-c-d' ]);
     assert.equal(paths[0].steps.length, 2);
@@ -63,8 +61,8 @@ describe('shortest path execution', () => {
   });
 
   it('uses shortest semantics independently for every start/end pair', async () => {
-    const engine = new PathQueryEngine(new QueryEngine());
-    const paths = await collect(engine.queryPaths(spec({
+    const engine = new PathsQueryEngine();
+    const paths = await collect(await engine.queryPaths(spec({
       start: { pattern: 'VALUES ?start { ex:a ex:b }', node: '?start' },
     }), { sources }));
 
@@ -72,8 +70,8 @@ describe('shortest path execution', () => {
   });
 
   it('returns every reachable endpoint when END is unconstrained', async () => {
-    const engine = new PathQueryEngine(new QueryEngine());
-    const paths = await collect(engine.queryPaths(spec({ end: { node: '?end' }, maxDepth: 2 }), { sources }));
+    const engine = new PathsQueryEngine();
+    const paths = await collect(await engine.queryPaths(spec({ end: { node: '?end' }, maxDepth: 2 }), { sources }));
 
     assert.deepEqual(paths.map(nodePath).sort(), [
       'a-b',
@@ -85,8 +83,8 @@ describe('shortest path execution', () => {
   });
 
   it('discovers starts from the first VIA evaluation when START is unconstrained', async () => {
-    const engine = new PathQueryEngine(new QueryEngine());
-    const paths = await collect(engine.queryPaths(spec({
+    const engine = new PathsQueryEngine();
+    const paths = await collect(await engine.queryPaths(spec({
       start: { node: '?start' },
       maxDepth: 1,
     }), { sources }));
@@ -95,15 +93,15 @@ describe('shortest path execution', () => {
   });
 
   it('honours zero and finite result limits', async () => {
-    const engine = new PathQueryEngine(new QueryEngine());
-    assert.deepEqual(await collect(engine.queryPaths(spec({ maxPaths: 0 }), { sources })), []);
-    assert.equal((await collect(engine.queryPaths(spec({ end: { node: '?end' }, maxPaths: 2 }), { sources }))).length, 2);
-    assert.deepEqual(await collect(engine.queryPaths(spec({ maxDepth: 0 }), { sources })), []);
+    const engine = new PathsQueryEngine();
+    assert.deepEqual(await collect(await engine.queryPaths(spec({ maxPaths: 0 }), { sources })), []);
+    assert.equal((await collect(await engine.queryPaths(spec({ end: { node: '?end' }, maxPaths: 2 }), { sources }))).length, 2);
+    assert.deepEqual(await collect(await engine.queryPaths(spec({ maxDepth: 0 }), { sources })), []);
   });
 
   it('returns shortest simple cycles rather than zero-length paths', async () => {
-    const engine = new PathQueryEngine(new QueryEngine());
-    const paths = await collect(engine.queryPaths(spec({
+    const engine = new PathsQueryEngine();
+    const paths = await collect(await engine.queryPaths(spec({
       end: { pattern: 'VALUES ?end { ex:a }', node: '?end' },
       maxDepth: 6,
     }), { sources }));
@@ -112,12 +110,12 @@ describe('shortest path execution', () => {
   });
 
   it('applies SPARQL compatibility to START and END pattern bindings', async () => {
-    const engine = new PathQueryEngine(new QueryEngine());
-    const incompatible = await collect(engine.queryPaths(spec({
+    const engine = new PathsQueryEngine();
+    const incompatible = await collect(await engine.queryPaths(spec({
       start: { pattern: 'VALUES (?start ?kind) { (ex:a ex:keep) }', node: '?start' },
       end: { pattern: 'VALUES (?end ?kind) { (ex:d ex:drop) }', node: '?end' },
     }), { sources }));
-    const compatible = await collect(engine.queryPaths(spec({
+    const compatible = await collect(await engine.queryPaths(spec({
       start: { pattern: 'VALUES (?start ?kind) { (ex:a ex:keep) }', node: '?start' },
       end: { pattern: 'VALUES (?end ?kind) { (ex:d ex:keep) }', node: '?end' },
     }), { sources }));
@@ -126,62 +124,83 @@ describe('shortest path execution', () => {
     assert.deepEqual(compatible.map(nodePath).sort(), [ 'a-b-d', 'a-c-d' ]);
   });
 
-  it('submits parseable standard SPARQL with bounded VALUES batches', async () => {
-    const delegate = new QueryEngine();
-    const queries = [];
-    const recordingEngine = {
-      async queryBindings(query, context) {
-        const parsed = new Parser({ sparqlStar: true }).parse(query);
-        queries.push({ query, parsed });
-        return delegate.queryBindings(query, context);
-      },
-    };
-    const engine = new PathQueryEngine(recordingEngine, { batchSize: 1 });
-    await collect(engine.queryPaths(spec(), { sources }));
+  it('submits one whole frontier per depth as a single mediated join', async () => {
+    const endpointQueries = [];
+    const fetch = async(input, init = {}) => {
+      const url = new URL(typeof input === 'string' ? input : input.url);
+      const query = url.searchParams.get('query') ?? new URLSearchParams(init.body).get('query');
+      endpointQueries.push(query);
 
-    const frontierQueries = queries.filter(({ query }) => /VALUES\s+\?from/iu.test(query));
-    assert.ok(frontierQueries.length >= 2);
-    assert.ok(frontierQueries.every(({ parsed }) => parsed.where[0].values.length === 1));
+      if (query.includes(`<${EX}edge>`)) {
+        // The first depth fans out to three nodes; the second closes on the target.
+        const fanOut = /VALUES[^}]*\bstart\b/u.test(query) || query.includes(`<${EX}a>`);
+        return sparqlJson([ 'from', 'to' ], fanOut && !query.includes(`<${EX}f1>`) ?
+          [ 'f1', 'f2', 'f3' ].map(to => ({
+            from: { type: 'uri', value: `${EX}a` },
+            to: { type: 'uri', value: `${EX}${to}` },
+          })) :
+          [ 'f1', 'f2', 'f3' ].map(from => ({
+            from: { type: 'uri', value: `${EX}${from}` },
+            to: { type: 'uri', value: `${EX}d` },
+          })));
+      }
+      return sparqlJson([ 'end' ], [{ end: { type: 'uri', value: `${EX}d` }}]);
+    };
+
+    const paths = await collect(await new PathsQueryEngine().queryPaths({
+      prologue: `PREFIX ex: <${EX}>`,
+      start: { pattern: 'VALUES ?start { ex:a }', node: '?start' },
+      end: { pattern: 'VALUES ?end { ex:d }', node: '?end' },
+      via: { pattern: '?from ex:edge ?to', from: '?from', to: '?to' },
+    }, { sources: [{ type: 'sparql', value: `${EX}sparql` }], fetch }));
+
+    assert.deepEqual(paths.map(nodePath).sort(), [ 'a-f1-d', 'a-f2-d', 'a-f3-d' ]);
+    const viaQueries = endpointQueries.filter(query => query.includes(`<${EX}edge>`));
+    assert.equal(viaQueries.length, 2, endpointQueries.join('\n---\n'));
+    // The whole three-node frontier travels in one request, not one request per node.
+    const secondDepth = viaQueries[1];
+    for (const node of [ 'f1', 'f2', 'f3' ]) {
+      assert.match(secondDepth, new RegExp(`${EX}${node}>`, 'u'), secondDepth);
+    }
   });
 
   it('stops after completing the shortest layer for a fixed END', async () => {
-    const delegate = new QueryEngine();
-    const queries = [];
-    const recordingEngine = {
-      async queryBindings(query, context) {
-        queries.push(query);
-        return delegate.queryBindings(query, context);
-      },
-    };
-    const engine = new PathQueryEngine(recordingEngine);
-    const paths = await collect(engine.queryPaths(spec({
+    const engine = new PathsQueryEngine();
+    const stream = await engine.queryPaths(spec({
       end: { pattern: 'VALUES ?end { ex:d }', node: '?end' },
       maxDepth: 4,
       maxPaths: 5,
-    }), { sources }));
+    }), { sources });
+    const paths = await collect(stream);
 
     assert.deepEqual(paths.map(nodePath).sort(), [ 'a-b-d', 'a-c-d' ]);
-    assert.equal(queries.filter(query => /VALUES\s+\?from\s*\{/iu.test(query)).length, 2);
+    // Both targets settle at depth two, so the depth-three frontier is never expanded.
+    assert.equal(stream.getProperty('metadata').depth, 2);
   });
 
   it('does not expand a second layer after finding a direct fixed END', async () => {
-    const delegate = new QueryEngine();
-    const queries = [];
-    const recordingEngine = {
-      async queryBindings(query, context) {
-        queries.push(query);
-        return delegate.queryBindings(query, context);
-      },
-    };
-    const engine = new PathQueryEngine(recordingEngine);
-    const paths = await collect(engine.queryPaths(spec({
+    const engine = new PathsQueryEngine();
+    const stream = await engine.queryPaths(spec({
       end: { pattern: 'VALUES ?end { ex:b }', node: '?end' },
       maxDepth: 4,
       maxPaths: 5,
-    }), { sources }));
+    }), { sources });
+    const paths = await collect(stream);
 
     assert.deepEqual(paths.map(nodePath), [ 'a-b' ]);
-    assert.equal(queries.filter(query => /VALUES\s+\?from\s*\{/iu.test(query)).length, 1);
+    assert.equal(stream.getProperty('metadata').depth, 1);
+  });
+
+  it('reports a cardinality estimate that becomes exact when the stream ends', async () => {
+    const engine = new PathsQueryEngine();
+    const stream = await engine.queryPaths(spec(), { sources });
+
+    assert.equal(stream.getProperty('metadata').cardinality.type, 'estimate');
+    const paths = await collect(stream);
+    assert.deepEqual(stream.getProperty('metadata').cardinality, {
+      type: 'exact',
+      value: paths.length,
+    });
   });
 
   it('carries blank-node frontiers through Comunica initial bindings', async () => {
@@ -200,8 +219,8 @@ describe('shortest path execution', () => {
       mediaType: 'application/n-triples',
       baseIRI: `${EX}blank-right`,
     };
-    const engine = new PathQueryEngine(new QueryEngine());
-    const paths = await collect(engine.queryPaths(spec({
+    const engine = new PathsQueryEngine();
+    const paths = await collect(await engine.queryPaths(spec({
       start: { pattern: 'VALUES ?start { ex:root }', node: '?start' },
       end: { pattern: 'VALUES ?end { ex:end ex:wrong }', node: '?end' },
       maxDepth: 2,
@@ -222,8 +241,8 @@ describe('shortest path execution', () => {
       mediaType: 'application/n-triples',
       baseIRI: `${EX}blank-end`,
     };
-    const engine = new PathQueryEngine(new QueryEngine());
-    const paths = await collect(engine.queryPaths(spec({
+    const engine = new PathsQueryEngine();
+    const paths = await collect(await engine.queryPaths(spec({
       start: { pattern: 'VALUES ?start { ex:root }', node: '?start' },
       end: { pattern: '?end ex:target true', node: '?end' },
       maxDepth: 1,
@@ -234,10 +253,16 @@ describe('shortest path execution', () => {
   });
 
   it('rejects malformed path specifications before querying', async () => {
-    const engine = new PathQueryEngine(new QueryEngine());
+    const engine = new PathsQueryEngine();
     await assert.rejects(
-      async () => collect(engine.queryPaths(spec({ via: { pattern: '', from: '?x', to: '?x' } }), { sources })),
+      async () => collect(await engine.queryPaths(spec({ via: { pattern: '', from: '?x', to: '?x' } }), { sources })),
       InvalidPathQueryError,
     );
   });
 });
+
+function sparqlJson(vars, bindings) {
+  return new Response(JSON.stringify({ head: { vars }, results: { bindings }}), {
+    headers: { 'content-type': 'application/sparql-results+json' },
+  });
+}

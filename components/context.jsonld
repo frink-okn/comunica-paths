@@ -58,8 +58,11 @@
           "args_queryProcessor": {
             "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_queryProcessor"
           },
-          "args_batchSize": {
-            "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_batchSize"
+          "args_mediatorContextPreprocess": {
+            "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_mediatorContextPreprocess"
+          },
+          "args_mediatorMergeBindingsContext": {
+            "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_mediatorMergeBindingsContext"
           },
           "args_name": {
             "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_name"
@@ -77,8 +80,11 @@
           "queryProcessor": {
             "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_queryProcessor"
           },
-          "batchSize": {
-            "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_batchSize"
+          "mediatorContextPreprocess": {
+            "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_mediatorContextPreprocess"
+          },
+          "mediatorMergeBindingsContext": {
+            "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_mediatorMergeBindingsContext"
           },
           "name": {
             "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_name"

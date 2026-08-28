@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { describe, it } from 'node:test';
-import { QueryEngine } from '@comunica/query-sparql';
-import { InvalidPathQueryError, parsePathServiceQuery, PathQueryEngine } from '../dist/index.js';
+import { InvalidPathQueryError, parsePathServiceQuery, QueryEngine as PathsQueryEngine } from '../dist/index.js';
 
 const EX = 'https://example.org/';
 const sources = [
@@ -66,8 +65,8 @@ describe('standard SPARQL SERVICE tunnel', () => {
   });
 
   it('executes a tunneled request without modifying Comunica', async () => {
-    const engine = new PathQueryEngine(new QueryEngine());
-    const paths = await collect(engine.queryPathService(serviceQuery(), { sources }));
+    const engine = new PathsQueryEngine();
+    const paths = await collect(await engine.queryPathService(serviceQuery(), { sources }));
 
     assert.deepEqual(paths.map(nodePath), [ 'a-b-d', 'a-c-d', 'a-b-x-d' ]);
   });

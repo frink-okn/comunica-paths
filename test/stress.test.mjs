@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { it } from 'node:test';
-import { QueryEngine } from '@comunica/query-sparql';
-import { PathQueryEngine } from '../dist/index.js';
+import { QueryEngine as PathsQueryEngine } from '../dist/index.js';
 
 const EX = 'https://example.org/stress/';
 
@@ -20,9 +19,9 @@ it('bounds path explosion while traversing a cyclic graph', async () => {
     mediaType: 'application/n-triples',
     baseIRI: EX,
   };
-  const engine = new PathQueryEngine(new QueryEngine(), { batchSize: 3 });
+  const engine = new PathsQueryEngine();
   const paths = [];
-  for await (const path of engine.queryPaths({
+  for await (const path of await engine.queryPaths({
     start: { pattern: `VALUES ?from { <${EX}0> }`, node: '?from' },
     end: { node: '?to' },
     via: { pattern: `?from <${EX}edge> ?to`, from: '?from', to: '?to' },

@@ -1,18 +1,18 @@
 export type {
-  BindingsQueryEngine,
-  BindingsStream,
+  IPathMetadata,
   IPathQueryEngine,
   PathEndpointPattern,
-  PathQueryEngineOptions,
   PathQueryExecutionOptions,
   PathQueryMode,
   PathQuerySpec,
   PathResult,
   PathStep,
+  PathStream,
   PathViaPattern,
   SparqlVariable,
 } from './types.js';
-export { InvalidPathQueryError, PathQueryCancelledError, UnsupportedPathTermError } from './errors.js';
+export { InvalidPathQueryError, PathQueryCancelledError } from './errors.js';
+export { KeysQueryPath } from './context-entries.js';
 export {
   ActorQueryPath,
   type IActionQueryPath,
@@ -22,7 +22,9 @@ export {
 } from './ActorQueryPath.js';
 export { ActorQueryPathBfs, type IActorQueryPathBfsArgs } from './ActorQueryPathBfs.js';
 export { ActorInitQueryPaths, type IActorInitQueryPathsArgs } from './ActorInitQueryPaths.js';
-export { PathQueryEngine } from './PathQueryEngine.js';
+export { PathOperations, type PathWarningLogger } from './PathOperations.js';
+export { BfsPathTraversal } from './BfsPathTraversal.js';
+export { PathMetadata, PathResultIterator } from './PathResultIterator.js';
 export { QueryEngine } from './QueryEngine.js';
 export { QueryEngineFactory } from './QueryEngineFactory.js';
 export {
@@ -33,3 +35,4 @@ export {
   PATHS_VIA_GRAPH_IRI,
 } from './service.js';
 export { parsePathQuery } from './syntax.js';
+export { validateSpec } from './spec.js';

@@ -1,8 +1,7 @@
-import type {
-  BindingsStream as ComunicaBindingsStream,
-  QueryStringContext,
-} from '@comunica/types';
-import type { Bindings, Term } from '@rdfjs/types';
+import type { QueryStringContext } from '@comunica/types';
+import type { MetadataValidationState } from '@comunica/utils-metadata';
+import type { Bindings, QueryResultCardinality, Term } from '@rdfjs/types';
+import type { AsyncIterator } from 'asynciterator';
 
 /** A SPARQL variable written in its query-string form. */
 export type SparqlVariable = `?${string}` | `$${string}`;
@@ -71,54 +70,47 @@ export interface PathResult {
   endBindings?: Bindings;
 }
 
+/** A stream of whole paths, following Comunica's iterator conventions. */
+export type PathStream = AsyncIterator<PathResult>;
+
 /**
- * The small structural subset of Comunica needed by the path executor.
- * Stock and custom-configured Comunica engines satisfy it.
+ * Metadata about a path stream, following the same shape and invalidation rules
+ * as Comunica's bindings metadata so that consumers can plan against it.
  */
-export type BindingsStream = ComunicaBindingsStream;
-
-/** The public portion of a Comunica query engine used by this extension. */
-export interface BindingsQueryEngine<QueryContext extends QueryStringContext = QueryStringContext> {
-  queryBindings(query: string, context?: QueryContext): Promise<BindingsStream>;
-  /**
-   * Optional native hook for joining a bindings frontier to a query. An actor-backed
-   * implementation can delegate this directly to Comunica's RDF-join mediator.
-   */
-  queryBindingsWithBindings?: (
-    query: string,
-    variable: SparqlVariable,
-    bindings: readonly Bindings[],
-    context?: QueryContext,
-  ) => Promise<BindingsStream>;
-}
-
-export interface PathQueryEngineOptions {
-  /** Maximum number of RDF terms placed in a generated VALUES clause. */
-  batchSize?: number;
+export interface IPathMetadata {
+  /** Invalidated whenever a completed traversal depth changes the estimate. */
+  state: MetadataValidationState;
+  /** An estimate while traversing, and the exact count once the stream ends. */
+  cardinality: QueryResultCardinality;
+  /** The number of traversal depths completed so far. */
+  depth: number;
 }
 
 export interface PathQueryExecutionOptions {
-  /** Cancels traversal and the currently active bindings stream. */
+  /**
+   * Cancels traversal and every active bindings stream. Equivalent to setting
+   * `httpAbortSignal` on the query context.
+   */
   signal?: AbortSignal;
   /** Selects an installed path-query actor. The bundled implementation is `bfs`. */
   algorithm?: string;
 }
 
-/** Public execution contract; its implementation remains outside Comunica's algebra. */
+/** Public path-query contract implemented by the configured engine. */
 export interface IPathQueryEngine<QueryContext extends QueryStringContext = QueryStringContext> {
   queryPaths(
     spec: PathQuerySpec,
     context?: QueryContext,
     options?: PathQueryExecutionOptions,
-  ): AsyncIterable<PathResult>;
+  ): Promise<PathStream>;
   queryPathString(
     query: string,
     context?: QueryContext,
     options?: PathQueryExecutionOptions,
-  ): AsyncIterable<PathResult>;
+  ): Promise<PathStream>;
   queryPathService(
     query: string,
     context?: QueryContext,
     options?: PathQueryExecutionOptions,
-  ): AsyncIterable<PathResult>;
+  ): Promise<PathStream>;
 }

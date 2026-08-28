@@ -111,10 +111,10 @@ async function main(args: string[]): Promise<void> {
 
   try {
     const engine = new QueryEngine();
-    for await (const path of engine.queryPathString(
+    for await (const path of await engine.queryPathString(
       query,
       { ...queryContext, sources, httpAbortSignal: controller.signal } as QueryStringContext,
-      { signal: controller.signal, ...(options.algorithm ? { algorithm: options.algorithm } : {}) },
+      options.algorithm ? { algorithm: options.algorithm } : undefined,
     )) {
       await writeLine(JSON.stringify(pathToJson(path)));
     }

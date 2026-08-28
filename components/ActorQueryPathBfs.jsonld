@@ -13,7 +13,7 @@
       "extends": [
         "cpaths:components/ActorQueryPath.jsonld#ActorQueryPath"
       ],
-      "comment": "Executes breadth-first path traversal while submitting each bounded frontier to Comunica as standard query algebra.",
+      "comment": "Executes breadth-first path traversal, submitting every bounded frontier to Comunica as standard query algebra.",
       "parameters": [
         {
           "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_queryProcessor",
@@ -21,17 +21,14 @@
           "comment": "The standard sequential query processor used to parse, optimize, and evaluate graph patterns."
         },
         {
-          "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_batchSize",
-          "range": {
-            "@type": "ParameterRangeUnion",
-            "parameterRangeElements": [
-              "xsd:number",
-              {
-                "@type": "ParameterRangeUndefined"
-              }
-            ]
-          },
-          "comment": "Maximum number of frontier bindings submitted in one mediated join."
+          "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_mediatorContextPreprocess",
+          "range": "cc:components/Mediator.jsonld#Mediator",
+          "comment": "Initializes the one request context that every path operation is derived from."
+        },
+        {
+          "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_mediatorMergeBindingsContext",
+          "range": "cc:components/Mediator.jsonld#Mediator",
+          "comment": "Creates the bindings used to bind a frontier node into a graph pattern."
         },
         {
           "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_name",
@@ -151,8 +148,12 @@
           "memberFieldName": "queryProcessor"
         },
         {
-          "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs__member_batchSize",
-          "memberFieldName": "batchSize"
+          "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs__member_mediatorContextPreprocess",
+          "memberFieldName": "mediatorContextPreprocess"
+        },
+        {
+          "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs__member_mediatorMergeBindingsContext",
+          "memberFieldName": "mediatorMergeBindingsContext"
         },
         {
           "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs__member_constructor",
@@ -165,6 +166,10 @@
         {
           "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs__member_run",
           "memberFieldName": "run"
+        },
+        {
+          "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs__member_logPlan",
+          "memberFieldName": "logPlan"
         }
       ],
       "constructorArguments": [
@@ -178,9 +183,15 @@
               }
             },
             {
-              "keyRaw": "batchSize",
+              "keyRaw": "mediatorContextPreprocess",
               "value": {
-                "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_batchSize"
+                "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_mediatorContextPreprocess"
+              }
+            },
+            {
+              "keyRaw": "mediatorMergeBindingsContext",
+              "value": {
+                "@id": "cpaths:components/ActorQueryPathBfs.jsonld#ActorQueryPathBfs_args_mediatorMergeBindingsContext"
               }
             },
             {
@@ -225,8 +236,12 @@
           "memberFieldName": "queryProcessor"
         },
         {
-          "@id": "cpaths:components/ActorQueryPathBfs.jsonld#IActorQueryPathBfsArgs__member_batchSize",
-          "memberFieldName": "batchSize"
+          "@id": "cpaths:components/ActorQueryPathBfs.jsonld#IActorQueryPathBfsArgs__member_mediatorContextPreprocess",
+          "memberFieldName": "mediatorContextPreprocess"
+        },
+        {
+          "@id": "cpaths:components/ActorQueryPathBfs.jsonld#IActorQueryPathBfsArgs__member_mediatorMergeBindingsContext",
+          "memberFieldName": "mediatorMergeBindingsContext"
         }
       ],
       "constructorArguments": []

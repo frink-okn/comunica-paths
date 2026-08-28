@@ -191,24 +191,12 @@
       "extends": [
         "cc:components/Actor.jsonld#IAction"
       ],
-      "comment": "Input to the dedicated path-query bus.",
+      "comment": "Input to the dedicated path-query bus.  The algorithm discriminator travels in the context under {@link KeysQueryPath.algorithm}, like every other query option.",
       "parameters": [],
       "memberFields": [
         {
           "@id": "cpaths:components/ActorQueryPath.jsonld#IActionQueryPath__member_spec",
           "memberFieldName": "spec"
-        },
-        {
-          "@id": "cpaths:components/ActorQueryPath.jsonld#IActionQueryPath__member_context",
-          "memberFieldName": "context"
-        },
-        {
-          "@id": "cpaths:components/ActorQueryPath.jsonld#IActionQueryPath__member_algorithm",
-          "memberFieldName": "algorithm"
-        },
-        {
-          "@id": "cpaths:components/ActorQueryPath.jsonld#IActionQueryPath__member_options",
-          "memberFieldName": "options"
         }
       ],
       "constructorArguments": []
@@ -256,6 +244,10 @@
         {
           "@id": "cpaths:components/ActorQueryPath.jsonld#IActorQueryPathOutput__member_pathStream",
           "memberFieldName": "pathStream"
+        },
+        {
+          "@id": "cpaths:components/ActorQueryPath.jsonld#IActorQueryPathOutput__member_metadata",
+          "memberFieldName": "metadata"
         },
         {
           "@id": "cpaths:components/ActorQueryPath.jsonld#IActorQueryPathOutput__member_context",

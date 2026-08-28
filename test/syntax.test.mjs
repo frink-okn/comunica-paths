@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { describe, it } from 'node:test';
-import { QueryEngine } from '@comunica/query-sparql';
-import { InvalidPathQueryError, parsePathQuery, PathQueryEngine } from '../dist/index.js';
+import { InvalidPathQueryError, parsePathQuery, QueryEngine as PathsQueryEngine } from '../dist/index.js';
 
 const EX = 'https://example.org/';
 const sources = [
@@ -72,8 +71,8 @@ describe('PATHS syntax', () => {
   });
 
   it('executes textual queries through an unchanged Comunica engine', async () => {
-    const engine = new PathQueryEngine(new QueryEngine());
-    const paths = await collect(engine.queryPathString(`
+    const engine = new PathsQueryEngine();
+    const paths = await collect(await engine.queryPathString(`
       PREFIX ex: <${EX}>
       PATHS ALL
       START ?from = ex:a

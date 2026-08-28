@@ -1,9 +1,8 @@
-import { QueryEngine } from '@comunica/query-sparql';
 import {
-  PathQueryEngine,
   QueryEngine as PathEnabledQueryEngine,
   QueryEngineFactory,
   type PathQuerySpec,
+  type PathStream,
 } from '../src/index.js';
 
 const spec = {
@@ -12,24 +11,19 @@ const spec = {
   via: { pattern: '?from <urn:edge> ?to', from: '?from', to: '?to' },
 } satisfies PathQuerySpec;
 
-const engine = new PathQueryEngine(new QueryEngine());
-const results = engine.queryPaths(spec, { sources: [] });
-const textualResults = engine.queryPathString(
+const engine = new PathEnabledQueryEngine();
+const results: Promise<PathStream> = engine.queryPaths(spec, { sources: []});
+const textualResults: Promise<PathStream> = engine.queryPathString(
   'PATHS START ?from = <urn:a> END ?to VIA <urn:edge> LIMIT 1',
-  { sources: [] },
+  { sources: []},
 );
-
-void results;
-void textualResults;
-
-const configuredEngine = new PathEnabledQueryEngine();
-const configuredResults = configuredEngine.queryPaths(spec, { sources: [] });
-const configuredTextualResults = configuredEngine.queryPathString(
-  'PATHS START ?from = <urn:a> END ?to VIA <urn:edge> LIMIT 1',
-  { sources: [] },
+const serviceResults: Promise<PathStream> = engine.queryPathService(
+  'SELECT * WHERE { SERVICE <urn:comunica:paths> { GRAPH <urn:comunica:paths:via> { ?from <urn:edge> ?to } } }',
+  { sources: []},
 );
 const dynamicEngine = new QueryEngineFactory().create();
 
-void configuredResults;
-void configuredTextualResults;
+void results;
+void textualResults;
+void serviceResults;
 void dynamicEngine;

@@ -14,7 +14,7 @@ The default export surface includes a normal Comunica query engine with PATHS su
 import { QueryEngine } from 'comunica-paths';
 
 const engine = new QueryEngine();
-const paths = engine.queryPathString(`
+const paths = await engine.queryPathString(`
   PREFIX ex: <https://example.org/>
   PATHS ALL
   START ?from = ex:a
@@ -110,58 +110,57 @@ const query = {
 } satisfies PathQuerySpec;
 ```
 
-`ActorQueryPathBfs` parses, optimizes, and evaluates the embedded START, END, and VIA graph
-patterns through Comunica's standard sequential query processor. For each traversal frontier,
-it creates an RDF/JS bindings stream with cardinality and variable metadata, then asks the
-configured RDF-join mediator to join that stream with the VIA or END operation. The normal
-join actors therefore choose bind, hash, nested-loop, or another installed strategy.
+`ActorQueryPathBfs` parses each embedded START, END, and VIA graph pattern into standard
+Comunica algebra once, and plans it once through the standard optimizer. For each traversal
+frontier it builds a `VALUES` relation over the frontier terms and joins that with the planned
+graph pattern. `VALUES` reports an exact cardinality, so the RDF-join mediator sees the true
+frontier size and chooses the physical join itself — bind, hash, nested-loop, or a bind join
+that pushes the frontier into the source request.
 
 ```ts
-import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
-import { PathQueryEngine } from 'comunica-paths';
+import { QueryEngine } from 'comunica-paths';
 
-const paths = new PathQueryEngine(new ComunicaQueryEngine()).queryPaths(query, {
+const paths = await new QueryEngine().queryPaths(query, {
   sources: [ 'https://example.org/data.ttl' ],
 });
 
 for await (const path of paths) {
   console.log(path.nodes, path.steps);
 }
+
+// The stream carries its own cardinality, refreshed once per completed depth.
+console.log(paths.getProperty('metadata').cardinality);
 ```
 
-`PathQueryEngine` in that example is the portable adapter. It only requires an object with
-Comunica's `queryBindings` method and consequently works with an existing or custom engine.
-It uses bounded `VALUES` joins for ordinary terms and `initialBindings` for blank nodes. The
-configured `QueryEngine` is preferred when Components.js integration is possible: it puts all
-frontier terms—including source-scoped blank nodes—through the same mediated bindings join.
+`queryPaths` resolves to an `AsyncIterator` of whole paths, following the same conventions as
+Comunica's bindings streams: it exposes a `metadata` property whose validation state is
+invalidated whenever the estimate changes, and destroying it tears the traversal down. The
+abort signal on the query context cancels the traversal and every request behind it.
 
-## Intended execution model
+## Execution model
 
-1. Evaluate START once and stream its distinct nodes into the initial frontier.
-2. Expand a bounded batch of frontier nodes by joining its RDF/JS bindings stream to the VIA
-   operation through Comunica's configured RDF-join mediator.
-3. Stream VIA solutions immediately while building the next breadth-first frontier.
-4. Test candidate nodes against END in batches and cache the result.
-5. For `shortest`, retain per-start distances and predecessor DAGs so every start/end pair
-   gets all of its shortest paths. For `all`, enumerate simple paths with explicit resource
-   limits so cycles cannot run forever.
-6. Propagate cancellation and downstream backpressure to every active Comunica stream.
+1. Parse and plan START, END, and VIA once, against one initialized request context.
+2. Evaluate START and stream its distinct nodes into the initial frontier.
+3. Expand the whole frontier for a depth as one `VALUES` relation joined with the planned VIA
+   pattern, letting the RDF-join mediator choose and chunk the physical join.
+4. Stream VIA solutions immediately while building the next breadth-first frontier.
+5. Test candidate nodes against END in one mediated join per depth, and cache the result.
+6. For `shortest`, retain per-start distances and predecessor DAGs so every start/end pair gets
+   all of its shortest paths. For `all`, enumerate simple paths with explicit resource limits so
+   cycles cannot run forever.
+7. Propagate cancellation and downstream backpressure to every active Comunica stream.
 
 Breadth-first depth is the only orchestration barrier: it is needed to know that a discovered
-route is shortest. Within a depth, frontier expansion and endpoint matching remain ordinary
-SPARQL joins planned and executed by Comunica.
+route is shortest. Within a depth, frontier expansion and endpoint matching are ordinary SPARQL
+joins planned and executed by Comunica. Nothing here batches the frontier or picks a join
+strategy; the join actors do both, using their own block sizes.
 
-RDF terms are keyed with RDF/JS term-aware collections—not by `.value`—so named nodes,
-blank nodes, language strings, datatypes, and RDF-star terms cannot collide in traversal state.
-In the actor-backed engine all terms use the same frontier-binding mechanism. Comunica's normal
-query-source skolemization layer owns blank-node source scope, exactly as it does for ordinary
-joins. The portable adapter has a blank-node-only `initialBindings` fallback because blank nodes
-cannot be represented as constants in a SPARQL `VALUES` clause.
-
-The breadth-first depth barrier remains in this package because shortest-path semantics require
-all predecessor edges at a depth before a shortest path can be finalized. It does not dictate
-the physical join inside a depth. See [ARCHITECTURE.md](./ARCHITECTURE.md) for the actor graph,
-extension points, and streaming tradeoffs.
+RDF terms are keyed with RDF/JS term-aware collections — not by `.value` — so named nodes, blank
+nodes, language strings, datatypes, and RDF-star terms cannot collide in traversal state. Named
+nodes and literals travel in the `VALUES` relation. Blank nodes and quoted triples, which
+SPARQL's `VALUES` grammar cannot hold, are bound into the graph pattern instead; Comunica's
+query-source skolemization layer then owns blank-node source scope exactly as it does for
+ordinary joins.
 
 ## Syntax
 
@@ -201,8 +200,7 @@ LIMIT 20
 
 `parsePathServiceQuery` decodes this form, while `queryPathService` decodes and executes it.
 This is an application-level tunnel: the reserved SERVICE is intercepted before the query
-is handed to Comunica. The underlying engine sees only the generated standard START, END,
-and VIA bindings queries.
+is handed to Comunica. The engine sees only the standard START, END, and VIA graph patterns.
 
 ## Components.js configuration
 
@@ -221,16 +219,20 @@ const engine = await new QueryEngineFactory().create({
 The shipped [`config/config-default.json`](./config/config-default.json) imports Comunica's
 standard SPARQL configuration and adds only the path actor, its mediator, and a path-enabled
 init actor. A downstream engine configuration can replace or tune these components in the
-usual Components.js way; `ActorQueryPathBfs` exposes `batchSize` as a configuration parameter.
-Path actors use an explicit execution discriminator. The public engine maps an omitted
-`algorithm` option to `bfs`; each actor should accept only its own value in `test()`.
+usual Components.js way.
+
+An alternative path algorithm subclasses `ActorQueryPath`. Callers select one through the
+`algorithm` execution option, which the engine places in the query context under
+`KeysQueryPath.algorithm`; each actor must reject every value it does not implement in
+`test()`, so the bus never resolves competing implementations by completion timing. This is the
+same arrangement Comunica uses on its own query-process bus.
 
 ## Status
 
-The programmatic API supports batched, streaming `shortest`, `all`, and cyclic execution,
-including maximum length, limit, offset, and cancellation. Both the textual PATHS adapter
-and the optional standard-SPARQL SERVICE envelope are implemented. The actor-backed and
-portable execution routes share the same traversal implementation and conformance tests.
+The programmatic API supports streaming `shortest`, `all`, and cyclic execution, including
+maximum length, limit, offset, and cancellation. Both the textual PATHS adapter and the
+optional standard-SPARQL SERVICE envelope are implemented. There is one execution route: the
+configured Components.js actor graph.
 
 ## Development
 

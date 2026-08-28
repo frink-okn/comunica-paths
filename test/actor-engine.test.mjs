@@ -45,7 +45,7 @@ describe('Components.js path engine', () => {
     ];
     const engine = new QueryEngine();
 
-    const paths = await collect(engine.queryPaths(spec(), { sources }));
+    const paths = await collect(await engine.queryPaths(spec(), { sources }));
     const rows = await collect(await engine.queryBindings(
       `SELECT * WHERE { ?s <${EX}edge> ?o }`,
       { sources },
@@ -75,7 +75,7 @@ describe('Components.js path engine', () => {
     });
     context = context.set(KeysInitQuery.physicalQueryPlanLogger, physicalQueryPlanLogger);
 
-    const paths = await collect(new QueryEngine().queryPaths(spec(), context));
+    const paths = await collect(await new QueryEngine().queryPaths(spec(), context));
 
     assert.equal(paths.length, 1);
     assert.ok(joins.length > 0);
@@ -92,7 +92,7 @@ describe('Components.js path engine', () => {
       source(`_:shared <${EX}edge> <${EX}wrong> .`, 'blank-right'),
     ];
 
-    const paths = await collect(new QueryEngine().queryPaths(spec({
+    const paths = await collect(await new QueryEngine().queryPaths(spec({
       end: { pattern: 'VALUES ?end { ex:d ex:wrong }', node: '?end' },
     }), { sources }));
 
@@ -102,7 +102,7 @@ describe('Components.js path engine', () => {
   });
 
   it('uses one initialized context for request-scoped SPARQL values', async () => {
-    const paths = await collect(new QueryEngine().queryPaths(spec({
+    const paths = await collect(await new QueryEngine().queryPaths(spec({
       start: {
         pattern: 'VALUES ?start { ex:a } BIND(NOW() AS ?stamp)',
         node: '?start',
@@ -163,7 +163,7 @@ describe('Components.js path engine', () => {
       });
     };
 
-    const paths = await collect(new QueryEngine().queryPaths(spec({ mode: 'all', maxDepth: 2 }), {
+    const paths = await collect(await new QueryEngine().queryPaths(spec({ mode: 'all', maxDepth: 2 }), {
       sources: [{ type: 'sparql', value: `${EX}sparql` }],
       fetch,
     }));
@@ -214,7 +214,7 @@ describe('Components.js path engine', () => {
       });
     };
 
-    const paths = await collect(new QueryEngine().queryPaths(spec({
+    const paths = await collect(await new QueryEngine().queryPaths(spec({
       via: {
         pattern: '?work ex:cast ?from . ?work ex:cast ?to',
         from: '?from',
@@ -237,11 +237,11 @@ describe('Components.js path engine', () => {
     const sources = [ source(`<${EX}a> <${EX}edge> <${EX}d> .`, 'algorithm') ];
 
     assert.deepEqual(
-      (await collect(engine.queryPaths(spec(), { sources }, { algorithm: 'bfs' }))).map(nodePath),
+      (await collect(await engine.queryPaths(spec(), { sources }, { algorithm: 'bfs' }))).map(nodePath),
       [ 'a-d' ],
     );
     await assert.rejects(
-      collect(engine.queryPaths(spec(), { sources }, { algorithm: 'not-installed' })),
+      engine.queryPaths(spec(), { sources }, { algorithm: 'not-installed' }),
       /only supports the 'bfs' path algorithm/u,
     );
   });
@@ -270,7 +270,7 @@ describe('Components.js path engine', () => {
     };
     const engine = new InstrumentedEngine();
 
-    await collect(engine.queryPaths(spec(), {
+    await collect(await engine.queryPaths(spec(), {
       sources: [ source(`<${EX}a> <${EX}edge> <${EX}d> .`, 'lifecycle') ],
       invalidateCache: true,
       log: logger,
@@ -282,7 +282,7 @@ describe('Components.js path engine', () => {
 
   it('can instantiate the path-enabled actor graph dynamically', async () => {
     const engine = await new QueryEngineFactory().create();
-    const paths = await collect(engine.queryPathString(`
+    const paths = await collect(await engine.queryPathString(`
       PREFIX ex: <${EX}>
       PATHS START ?from = ex:a END ?to = ex:d VIA ex:edge
     `, {
@@ -293,17 +293,29 @@ describe('Components.js path engine', () => {
   });
 
   it('propagates cancellation through the actor-backed result stream', async () => {
+    // A complete graph keeps the traversal running well past the first result,
+    // so the abort lands on a stream that is still producing.
+    const triples = [];
+    for (let from = 0; from < 8; from++) {
+      for (let to = 0; to < 8; to++) {
+        if (from !== to) {
+          triples.push(`<${EX}${from}> <${EX}edge> <${EX}${to}> .`);
+        }
+      }
+    }
+
     const controller = new AbortController();
-    const paths = new QueryEngine().queryPaths(spec({
+    const stream = await new QueryEngine().queryPaths({
+      prologue: `PREFIX ex: <${EX}>`,
+      start: { pattern: 'VALUES ?start { ex:0 }', node: '?start' },
       end: { node: '?end' },
-      maxDepth: 2,
-    }), {
-      sources: [ source(`
-        <${EX}a> <${EX}edge> <${EX}b> .
-        <${EX}a> <${EX}edge> <${EX}c> .
-        <${EX}b> <${EX}edge> <${EX}d> .
-      `, 'cancel') ],
-    }, { signal: controller.signal })[Symbol.asyncIterator]();
+      via: { pattern: '?from ex:edge ?to', from: '?from', to: '?to' },
+      mode: 'all',
+      maxDepth: 6,
+    }, {
+      sources: [ source(triples.join('\n'), 'cancel') ],
+    }, { signal: controller.signal });
+    const paths = stream[Symbol.asyncIterator]();
 
     assert.equal((await paths.next()).done, false);
     controller.abort();

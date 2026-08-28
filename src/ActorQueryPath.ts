@@ -1,20 +1,23 @@
 import type { IAction, IActorArgs, IActorOutput, IActorTest, Mediate } from '@comunica/core';
 import { Actor } from '@comunica/core';
 import type { IActionContext } from '@comunica/types';
-import type { PathQueryExecutionOptions, PathQuerySpec, PathResult } from './types.js';
+import type { IPathMetadata, PathQuerySpec, PathStream } from './types.js';
 
-/** Input to the dedicated path-query bus. */
+/**
+ * Input to the dedicated path-query bus.
+ *
+ * The algorithm discriminator travels in the context under
+ * {@link KeysQueryPath.algorithm}, like every other query option.
+ */
 export interface IActionQueryPath extends IAction {
   spec: PathQuerySpec;
-  context: IActionContext;
-  /** Selects exactly one path algorithm actor. */
-  algorithm: string;
-  options?: PathQueryExecutionOptions;
 }
 
 /** Output from the dedicated path-query bus. */
 export interface IActorQueryPathOutput extends IActorOutput {
-  pathStream: AsyncIterable<PathResult>;
+  pathStream: PathStream;
+  /** Resolves the current path-stream metadata, following Comunica's invalidation rules. */
+  metadata: () => Promise<IPathMetadata>;
   /** The initialized request context shared by every internal query operation. */
   context: IActionContext;
 }
