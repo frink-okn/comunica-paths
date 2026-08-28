@@ -37,7 +37,9 @@ Each embedded pattern is parsed into algebra and planned **once**:
 1. The pattern text is parsed as `SELECT * WHERE { … }`. The wrapper exists so the pattern
    reaches the query parser, and so that the optimizers see a query operation at the root —
    source assignment silently does nothing to a bare graph pattern.
-2. The optimizer plans that query, assigning and grouping sources.
+2. The optimizer plans that query, assigning and grouping sources. It is handed the context
+   parsing produced, the way Comunica's own query processors chain the two steps, so the plan
+   carries the query string the pattern was read from and any base IRI its prologue declared.
 3. The projection is removed again. It projects exactly the variables its input already
    produces, and leaving it in would wrap every pushed-down request in a redundant sub-select.
    If source assignment scoped the whole query to one source, that scope moves to the graph
@@ -52,6 +54,18 @@ planned pattern. `VALUES` reports an exact cardinality, so the RDF-join mediator
 frontier size and selects the physical join: a bind join, a hash join, or a bind join that
 pushes the frontier into the source request. Nothing here batches the frontier — the whole
 frontier is offered as one relation, and the join actors chunk it using their own block sizes.
+
+That join is flattened under the rule Comunica's own `materializeOperation` applies: an input
+carrying algebra metadata — a source annotation above all — stays a single join entry, and only
+an unannotated input is merged. A pattern the optimizer scoped to one source therefore reaches
+its bind-join actor whole, while a pattern left to local evaluation is weighed pattern by
+pattern against the frontier.
+
+Each depth's evaluation is wrapped in `DISTINCT`, after planning rather than before it.
+Deduplication has to hold across the whole federation, so it must not be pushed into an
+individual source; and planning it in would put the pattern behind a sub-select the frontier
+relation can no longer filter, which would make a source recompute its whole distinct edge set
+on every depth.
 
 Planning happens once rather than once per depth, which is what Comunica's own bind-join actors
 do: they materialize bindings into an operation and mediate the query-operation bus directly,
@@ -74,18 +88,35 @@ equal-length shortest paths are retained, but no deeper frontier is evaluated.
 The bus returns a Comunica-shaped result: an `AsyncIterator` of paths, a `metadata()` accessor,
 and the initialized context. The metadata carries a `MetadataValidationState` and a cardinality
 that is an estimate while traversing and exact once the stream ends; it is refreshed once per
-completed depth rather than once per path. The public `queryPaths` also exposes the current
-metadata as the stream's `metadata` property, the same convention `IQuerySource.queryBindings`
-follows.
+completed depth rather than once per path. `queryPaths` publishes that accessor's value as the
+stream's `metadata` property — the convention `IQuerySource.queryBindings` follows — which is
+what makes it reachable through the public API, for any actor on the bus rather than only the
+one that happens to build its own iterator.
+
+The estimate is the sum of the paths already emitted, the traversal states still waiting to be
+expanded, and the cardinality the join actors reported for the expansion in flight. In `all`
+mode the pending states are the partial paths, not the distinct nodes they currently sit on,
+because each partial path is expanded on its own.
 
 Cancellation is ordinary stream teardown. Destroying the path stream destroys every bindings
 stream still in flight and then unwinds the traversal, and the request's abort signal is wired
 to that same teardown — so cancelling stops the traversal between depths as well as aborting
 the HTTP requests underneath it.
 
-The traversal registers itself in the physical query plan and sets `physicalQueryPlanNode`, so
-each depth's join plan is reported as a child of the path query rather than as a disconnected
-root.
+`asynciterator` emits `end` only for a stream that closes normally: `destroy()` moves straight
+to the destroyed state, skipping the event and then dropping its listeners. Cleanup that has to
+run however a request finishes — flushing the logger, releasing the listener on the caller's
+abort signal — therefore hangs off the iterator's own teardown hook rather than off `end`.
+
+The traversal registers itself in the physical query plan and sets `physicalQueryPlanNode`, and
+every clause evaluation adds a further node beneath it, labelled with its clause and traversal
+depth. A physical explanation therefore reads as one node per depth, each showing the join the
+RDF-join mediator picked, rather than as a flat run of indistinguishable siblings.
+
+`queryPaths` has no explain mode of its own, because the path bus is not the query-process bus
+that Comunica's explain actors sit on. `explainPaths` fills that role instead: it installs a
+`MemoryPhysicalQueryPlanLogger`, runs the traversal to completion, and returns the same
+`IQueryExplained` shape, in `parsed`, `physical`, or `physical-json` mode.
 
 ## Blank nodes and quoted triples
 

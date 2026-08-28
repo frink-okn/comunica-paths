@@ -1,4 +1,4 @@
-import type { QueryStringContext } from '@comunica/types';
+import type { IQueryExplained, QueryExplainMode, QueryStringContext } from '@comunica/types';
 import type { MetadataValidationState } from '@comunica/utils-metadata';
 import type { Bindings, QueryResultCardinality, Term } from '@rdfjs/types';
 import type { AsyncIterator } from 'asynciterator';
@@ -113,4 +113,26 @@ export interface IPathQueryEngine<QueryContext extends QueryStringContext = Quer
     context?: QueryContext,
     options?: PathQueryExecutionOptions,
   ): Promise<PathStream>;
+  /**
+   * Explain a path query, in the same shape `QueryEngineBase.explain` reports an
+   * ordinary one. Supported modes are `parsed`, `physical`, and `physical-json`.
+   */
+  explainPaths(
+    spec: PathQuerySpec,
+    context: QueryContext | undefined,
+    explainMode: QueryExplainMode,
+    options?: PathQueryExecutionOptions,
+  ): Promise<IQueryExplained>;
+  explainPathString(
+    query: string,
+    context: QueryContext | undefined,
+    explainMode: QueryExplainMode,
+    options?: PathQueryExecutionOptions,
+  ): Promise<IQueryExplained>;
+  explainPathService(
+    query: string,
+    context: QueryContext | undefined,
+    explainMode: QueryExplainMode,
+    options?: PathQueryExecutionOptions,
+  ): Promise<IQueryExplained>;
 }

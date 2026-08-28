@@ -137,6 +137,39 @@ Comunica's bindings streams: it exposes a `metadata` property whose validation s
 invalidated whenever the estimate changes, and destroying it tears the traversal down. The
 abort signal on the query context cancels the traversal and every request behind it.
 
+The estimate is the paths already emitted, plus the traversal states still to be expanded, plus
+the cardinality Comunica itself reports for the expansion in flight. It becomes exact when the
+stream ends.
+
+### Explaining a path query
+
+`explainPaths`, `explainPathString`, and `explainPathService` report a path query the way
+`QueryEngineBase.explain` reports an ordinary one, in `parsed`, `physical`, or `physical-json`
+mode:
+
+```ts
+const { data } = await new QueryEngine()
+  .explainPaths(query, { sources: [ 'https://example.org/data.ttl' ]}, 'physical');
+console.log(data);
+```
+
+```text
+paths(bfs)
+  paths-start
+    distinct
+      values
+  paths-via
+    distinct
+      join
+        join-inner(bind-source) ...
+  paths-end
+    ...
+```
+
+Every clause and every traversal depth is its own node beneath the path query, so the plan shows
+which physical join each depth chose and against which source. A physical explanation runs the
+traversal to completion, exactly as Comunica's own physical-explain actor does.
+
 ## Execution model
 
 1. Parse and plan START, END, and VIA once, against one initialized request context.

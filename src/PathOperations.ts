@@ -17,6 +17,15 @@ import type { PathQuerySpec } from './types.js';
 /** Reports a condition that silently reduces the result set. */
 export type PathWarningLogger = (message: string, data?: () => Record<string, unknown>) => void;
 
+/**
+ * The clause an evaluation belongs to, used as the logical operator name of its
+ * physical query plan node.
+ */
+export type PathClause = 'paths-start' | 'paths-via' | 'paths-end';
+
+/** Receives the cardinality Comunica reports for a frontier expansion. */
+export type PathExpansionListener = (cardinality: RDF.QueryResultCardinality) => void;
+
 /** One embedded graph pattern, planned once and reused at every depth. */
 interface IPathPattern {
   /** The planned graph pattern, carrying whatever source assignment decided. */
@@ -25,6 +34,23 @@ interface IPathPattern {
   context: IActionContext;
   /** Whether one source received the complete query, as a SPARQL endpoint does. */
   wholeQuerySource: boolean;
+}
+
+export interface IPathOperationsArgs {
+  /** The standard sequential query processor used to parse, optimize, and evaluate graph patterns. */
+  queryProcessor: IQueryProcessSequential;
+  /** Creates the bindings used to bind a frontier node into a graph pattern. */
+  bindingsFactory: BindingsFactory;
+  /** The initialized request context. See {@link PathOperations#context}. */
+  context: IActionContext;
+  /** A specification that has already passed `validateSpec`. */
+  spec: PathQuerySpec;
+  /** Reports a condition that silently reduces the result set. */
+  logWarn: PathWarningLogger;
+  /** Recorded as the responsible actor on the physical query plan node of every evaluation. */
+  actorName: string;
+  /** Receives the cardinality Comunica reports for each frontier expansion. */
+  onExpansionCardinality?: PathExpansionListener;
 }
 
 /**
@@ -44,21 +70,25 @@ interface IPathPattern {
  * reason given on the request context below.
  */
 export class PathOperations {
+  /**
+   * The initialized request context, and the only context handed to the
+   * optimizer. Planning must always start from it, and must not be repeated with
+   * a planned context: the optimizer wraps every query source in a fresh
+   * skolemization layer, so re-planning would wrap the sources again and change
+   * blank-node identity between depths.
+   */
+  public readonly context: IActionContext;
+
   private readonly activeStreams = new Set<BindingsStream>();
   private readonly algebraFactory: AlgebraFactory;
+  private readonly queryProcessor: IQueryProcessSequential;
+  private readonly bindingsFactory: BindingsFactory;
+  private readonly logWarn: PathWarningLogger;
+  private readonly actorName: string;
+  private readonly onExpansionCardinality: PathExpansionListener | undefined;
 
   private constructor(
-    private readonly queryProcessor: IQueryProcessSequential,
-    private readonly bindingsFactory: BindingsFactory,
-    private readonly logWarn: PathWarningLogger,
-    /**
-     * The initialized request context, and the only context handed to the
-     * optimizer. Planning must always start from it, and must not be repeated
-     * with a planned context: the optimizer wraps every query source in a fresh
-     * skolemization layer, so re-planning would wrap the sources again and change
-     * blank-node identity between depths.
-     */
-    public readonly context: IActionContext,
+    args: IPathOperationsArgs,
     dataFactory: ComunicaDataFactory,
     private readonly startPattern: IPathPattern | undefined,
     private readonly viaPattern: IPathPattern,
@@ -70,35 +100,39 @@ export class PathOperations {
     /** The finite END target set when END is a bare `VALUES` block, otherwise undefined. */
     public readonly fixedEndNodes: TermSet<RDF.Term> | undefined,
   ) {
+    this.queryProcessor = args.queryProcessor;
+    this.bindingsFactory = args.bindingsFactory;
+    this.logWarn = args.logWarn;
+    this.actorName = args.actorName;
+    this.onExpansionCardinality = args.onExpansionCardinality;
+    this.context = args.context;
     this.algebraFactory = new AlgebraFactory(dataFactory);
   }
 
-  public static async create(
-    queryProcessor: IQueryProcessSequential,
-    bindingsFactory: BindingsFactory,
-    logWarn: PathWarningLogger,
-    context: IActionContext,
-    spec: PathQuerySpec,
-  ): Promise<PathOperations> {
+  public static async create(args: IPathOperationsArgs): Promise<PathOperations> {
+    const { context, spec } = args;
     const dataFactory = context.getSafe(KeysInitQuery.dataFactory);
     const algebraFactory = new AlgebraFactory(dataFactory);
-    const prepare = async(pattern: string | undefined): Promise<IPathPattern | undefined> => pattern?.trim() ?
-      await preparePattern(queryProcessor, algebraFactory, context, spec, pattern) :
-      undefined;
+    const prepare = async(pattern: string | undefined): Promise<IPathPattern | undefined> =>
+      pattern?.trim() ?
+        await preparePattern(args.queryProcessor, algebraFactory, context, spec, pattern) :
+        undefined;
 
-    const via = await prepare(spec.via.pattern);
-    if (!via) {
-      throw new InvalidPathQueryError('VIA pattern must not be empty');
-    }
+    // `validateSpec` is the single validator of a specification, and the actor
+    // applies it before reaching here; a VIA pattern is guaranteed to be present.
+    const via = await preparePattern(
+      args.queryProcessor,
+      algebraFactory,
+      context,
+      spec,
+      spec.via.pattern,
+    );
     const start = await prepare(spec.start.pattern);
     const end = await prepare(spec.end.pattern);
     const endVariable = dataFactory.variable(spec.end.node.slice(1));
 
     return new PathOperations(
-      queryProcessor,
-      bindingsFactory,
-      logWarn,
-      context,
+      args,
       dataFactory,
       start,
       via,
@@ -121,22 +155,22 @@ export class PathOperations {
 
   /** Evaluate the START pattern without any frontier constraint. */
   public queryStart(): AsyncIterable<RDF.Bindings> {
-    return this.consume(this.startPattern!, this.startPattern!.operation);
+    return this.consume(this.startPattern!, this.startPattern!.operation, 'paths-start');
   }
 
-  /** Evaluate the VIA pattern without any frontier constraint. */
-  public queryVia(): AsyncIterable<RDF.Bindings> {
-    return this.consume(this.viaPattern, this.viaPattern.operation);
+  /** Evaluate the VIA pattern without any frontier constraint, as the first depth. */
+  public queryVia(depth: number): AsyncIterable<RDF.Bindings> {
+    return this.consume(this.viaPattern, this.viaPattern.operation, 'paths-via', depth);
   }
 
   /** Evaluate the VIA pattern for every frontier node in one mediated join. */
-  public queryViaFrom(terms: readonly RDF.Term[]): AsyncIterable<RDF.Bindings> {
-    return this.queryConstrained(this.viaPattern, this.viaFromVariable, terms);
+  public queryViaFrom(terms: readonly RDF.Term[], depth: number): AsyncIterable<RDF.Bindings> {
+    return this.queryConstrained(this.viaPattern, this.viaFromVariable, terms, 'paths-via', depth);
   }
 
   /** Evaluate the END pattern for every candidate endpoint in one mediated join. */
-  public queryEndFor(terms: readonly RDF.Term[]): AsyncIterable<RDF.Bindings> {
-    return this.queryConstrained(this.endPattern!, this.endVariable, terms);
+  public queryEndFor(terms: readonly RDF.Term[], depth: number): AsyncIterable<RDF.Bindings> {
+    return this.queryConstrained(this.endPattern!, this.endVariable, terms, 'paths-end', depth);
   }
 
   /** Destroy every bindings stream that is still in flight. */
@@ -159,6 +193,8 @@ export class PathOperations {
     pattern: IPathPattern,
     variable: RDF.Variable,
     terms: readonly RDF.Term[],
+    clause: PathClause,
+    depth: number,
   ): AsyncIterable<RDF.Bindings> {
     const inlineable: (RDF.NamedNode | RDF.Literal)[] = [];
     const substitutable: RDF.Term[] = [];
@@ -176,18 +212,21 @@ export class PathOperations {
         inlineable.map(term => ({ [variable.value]: term })),
       );
       // Flattening lets the n-way join actors weigh the frontier against every
-      // graph-pattern input at once. A pattern that source assignment scoped to
-      // one source stays a single input, so that its bind-join actor can push
-      // the frontier into the source request instead.
-      const scoped = Boolean(getOperationSource(pattern.operation));
+      // graph-pattern input at once. An input carrying metadata — a source
+      // annotation above all — has to stay a single entry, so that its bind-join
+      // actor can push the frontier into that source's request instead. This is
+      // the rule Comunica's own `materializeOperation` applies to a join.
+      const inputs: Algebra.Operation[] = [ values, pattern.operation ];
       yield* this.consume(
         pattern,
-        this.algebraFactory.createJoin([ values, pattern.operation ], !scoped),
+        this.algebraFactory.createJoin(inputs, inputs.every(input => !input.metadata)),
+        clause,
+        depth,
       );
     }
 
     for (const term of substitutable) {
-      yield* this.querySubstituted(pattern, variable, term);
+      yield* this.querySubstituted(pattern, variable, term, clause, depth);
     }
   }
 
@@ -204,6 +243,8 @@ export class PathOperations {
     pattern: IPathPattern,
     variable: RDF.Variable,
     term: RDF.Term,
+    clause: PathClause,
+    depth: number,
   ): AsyncIterable<RDF.Bindings> {
     if (term.termType === 'BlankNode' && pattern.wholeQuerySource) {
       // A blank node returned by a whole-query source has result-set scope. Its
@@ -226,7 +267,7 @@ export class PathOperations {
     // Substitution removes the variable from the pattern, so it is absent from
     // the solutions. Restore it, so that every route through this class produces
     // the same variables for the same graph pattern.
-    for await (const bindings of this.consume(pattern, substituted)) {
+    for await (const bindings of this.consume(pattern, substituted, clause, depth)) {
       yield bindings.set(variable, term);
     }
   }
@@ -234,13 +275,29 @@ export class PathOperations {
   private async *consume(
     pattern: IPathPattern,
     operation: Algebra.Operation,
+    clause: PathClause,
+    depth?: number,
   ): AsyncIterable<RDF.Bindings> {
-    // Deduplicate after planning. Distinct solutions are required across the
-    // whole federation, so this must not be pushed into an individual source.
+    // Deduplicate after planning, deliberately. Distinct solutions are required
+    // across the whole federation, so this must not be pushed into an individual
+    // source — and planning it in would put the pattern behind a sub-select that
+    // the frontier relation can no longer filter, making a source compute its
+    // distinct edge set in full on every depth.
     const distinct = this.algebraFactory.createDistinct(operation);
-    const stream = getSafeBindings(
-      await this.queryProcessor.evaluate(distinct, pattern.context),
-    ).bindingsStream;
+    const output = getSafeBindings(
+      await this.queryProcessor.evaluate(distinct, this.planEvaluation(pattern.context, clause, depth)),
+    );
+    if (this.onExpansionCardinality && clause === 'paths-via') {
+      // Read the metadata the join actors already computed, without waiting on
+      // it: a source that resolves its cardinality late must not stall traversal.
+      output.metadata().then(
+        metadata => this.onExpansionCardinality!(metadata.cardinality),
+        () => {
+          // No estimate available; the previous one stands.
+        },
+      );
+    }
+    const stream = output.bindingsStream;
     this.activeStreams.add(stream);
     try {
       yield* stream;
@@ -250,6 +307,32 @@ export class PathOperations {
         stream.destroy();
       }
     }
+  }
+
+  /**
+   * Give one evaluation its own physical query plan node, so that each clause and
+   * each traversal depth is reported separately rather than as one flat run of
+   * indistinguishable siblings under the path query.
+   */
+  private planEvaluation(
+    context: IActionContext,
+    clause: PathClause,
+    depth: number | undefined,
+  ): IActionContext {
+    const logger = context.get(KeysInitQuery.physicalQueryPlanLogger);
+    if (!logger) {
+      return context;
+    }
+    const node = { clause, depth };
+    logger.logOperation(
+      clause,
+      undefined,
+      node,
+      context.get(KeysInitQuery.physicalQueryPlanNode),
+      this.actorName,
+      depth === undefined ? {} : { depth },
+    );
+    return context.set(KeysInitQuery.physicalQueryPlanNode, node);
   }
 }
 
@@ -307,12 +390,15 @@ async function preparePattern(
     // Nothing to assign a source to. Planning a source-independent form such as
     // a bare VALUES block would only scope it to a source, turning a constant
     // endpoint into a remote request.
-    return { operation: projection.input, context, wholeQuerySource: false };
+    return { operation: projection.input, context: parsed.context, wholeQuerySource: false };
   }
 
+  // Plan against the context parsing produced, the way Comunica's own query
+  // processors chain the two steps: it carries the query string this pattern was
+  // read from, and any base IRI its prologue declared.
   const planned = await queryProcessor.optimize(
     algebraFactory.createProject(projection.input, [ ...projection.variables ]),
-    context,
+    parsed.context,
   );
   // A source annotated on the projection itself received the complete query,
   // which only a source that answers whole queries — a SPARQL endpoint — does.

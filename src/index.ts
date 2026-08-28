@@ -22,7 +22,13 @@ export {
 } from './ActorQueryPath.js';
 export { ActorQueryPathBfs, type IActorQueryPathBfsArgs } from './ActorQueryPathBfs.js';
 export { ActorInitQueryPaths, type IActorInitQueryPathsArgs } from './ActorInitQueryPaths.js';
-export { PathOperations, type PathWarningLogger } from './PathOperations.js';
+export {
+  PathOperations,
+  type IPathOperationsArgs,
+  type PathClause,
+  type PathExpansionListener,
+  type PathWarningLogger,
+} from './PathOperations.js';
 export { BfsPathTraversal } from './BfsPathTraversal.js';
 export { PathMetadata, PathResultIterator } from './PathResultIterator.js';
 export { QueryEngine } from './QueryEngine.js';

@@ -1,7 +1,7 @@
 import type { MediatorContextPreprocess } from '@comunica/bus-context-preprocess';
 import type { MediatorMergeBindingsContext } from '@comunica/bus-merge-bindings-context';
 import type { IQueryProcessSequential } from '@comunica/bus-query-process';
-import { KeysHttp, KeysInitQuery } from '@comunica/context-entries';
+import { KeysCore, KeysHttp, KeysInitQuery } from '@comunica/context-entries';
 import { failTest, passTestVoid, type IActorTest, type TestResult } from '@comunica/core';
 import type { IActionContext, IPhysicalQueryPlanLogger } from '@comunica/types';
 import { BindingsFactory } from '@comunica/utils-bindings-factory';
@@ -59,21 +59,27 @@ export class ActorQueryPathBfs extends ActorQueryPath {
       context,
       context.getSafe(KeysInitQuery.dataFactory),
     );
-    const operations = await PathOperations.create(
-      this.queryProcessor,
-      bindingsFactory,
-      (message, data) => this.logWarn(context, message, data),
-      this.logPlan(context, action),
-      action.spec,
-    );
-
     const metadata = new PathMetadata(action.spec.maxPaths);
+    const operations = await PathOperations.create({
+      queryProcessor: this.queryProcessor,
+      bindingsFactory,
+      context: this.logPlan(context, action),
+      spec: action.spec,
+      actorName: this.name,
+      logWarn: (message, data) => this.logWarn(context, message, data),
+      onExpansionCardinality: cardinality => metadata.recordExpansion(cardinality),
+    });
+
     const traversal = new BfsPathTraversal(action.spec, operations, metadata);
     const pathStream = new PathResultIterator(
       traversal.run(),
       metadata,
       cause => operations.destroy(cause),
     );
+    // The logger belongs to the context this actor initialized, so flushing it is
+    // this actor's responsibility — and on every way the stream can finish, not
+    // only on one that runs to its end.
+    pathStream.onDone(() => context.get(KeysCore.log)?.flush());
     linkAbortSignal(pathStream, context.get(KeysHttp.httpAbortSignal));
 
     return {
@@ -135,5 +141,8 @@ function linkAbortSignal(pathStream: PathResultIterator, signal: AbortSignal | u
     return;
   }
   signal.addEventListener('abort', abort, { once: true });
-  pathStream.on('end', () => signal.removeEventListener('abort', abort));
+  // Drop the listener however the stream finishes. A signal that outlives this
+  // request must not keep a finished traversal reachable, and a destroyed stream
+  // never emits `end`.
+  pathStream.onDone(() => signal.removeEventListener('abort', abort));
 }

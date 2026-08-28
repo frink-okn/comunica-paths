@@ -5,6 +5,7 @@
   "ignoreComponents": [
     "BfsPathTraversal",
     "IPathMetadata",
+    "IPathOperationsArgs",
     "IPathQueryEngine",
     "InvalidPathQueryError",
     "KeysQueryPath",
@@ -13,7 +14,9 @@
     "PATHS_SERVICE_IRI",
     "PATHS_START_GRAPH_IRI",
     "PATHS_VIA_GRAPH_IRI",
+    "PathClause",
     "PathEndpointPattern",
+    "PathExpansionListener",
     "PathMetadata",
     "PathOperations",
     "PathQueryCancelledError",

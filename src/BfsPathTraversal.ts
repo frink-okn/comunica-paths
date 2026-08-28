@@ -113,14 +113,14 @@ export class BfsPathTraversal {
       const firstLayer = await this.expandShortestUnconstrained();
       frontier = firstLayer.frontier;
       depth = 1;
-      yield* this.emitShortestLayer(firstLayer);
+      yield* this.emitShortestLayer(firstLayer, depth);
     }
     this.metadata.recordDepth(depth, frontier.size);
 
     while (frontier.size > 0 && depth < this.maxDepth) {
       const nextDepth = depth + 1;
       const layer = await this.expandShortestFrontier(frontier, nextDepth);
-      yield* this.emitShortestLayer(layer);
+      yield* this.emitShortestLayer(layer, nextDepth);
       frontier = layer.frontier;
       depth = nextDepth;
       this.metadata.recordDepth(depth, frontier.size);
@@ -143,16 +143,19 @@ export class BfsPathTraversal {
       const firstLayer = await this.expandAllUnconstrained();
       frontier = firstLayer.frontier;
       depth = 1;
-      yield* this.emitAllLayer(firstLayer);
+      yield* this.emitAllLayer(firstLayer, depth);
     }
-    this.metadata.recordDepth(depth, frontier.size);
+    this.metadata.recordDepth(depth, countAllStates(frontier));
 
     while (frontier.size > 0 && depth < this.maxDepth) {
-      const layer = await this.expandAllFrontier(frontier);
-      yield* this.emitAllLayer(layer);
+      const nextDepth = depth + 1;
+      const layer = await this.expandAllFrontier(frontier, nextDepth);
+      yield* this.emitAllLayer(layer, nextDepth);
       frontier = layer.frontier;
-      depth++;
-      this.metadata.recordDepth(depth, frontier.size);
+      depth = nextDepth;
+      // Every partial path is expanded on its own, so the states left to expand
+      // are the partial paths, not the distinct nodes they currently sit on.
+      this.metadata.recordDepth(depth, countAllStates(frontier));
     }
   }
 
@@ -173,7 +176,7 @@ export class BfsPathTraversal {
     if (this.maxDepth < 1) {
       return layer;
     }
-    for await (const bindings of this.operations.queryVia()) {
+    for await (const bindings of this.operations.queryVia(1)) {
       const { from, to } = this.requireStep(bindings);
       if (!this.roots.has(from)) {
         this.roots.set(from, {});
@@ -189,7 +192,7 @@ export class BfsPathTraversal {
     depth: number,
   ): Promise<ShortestLayer> {
     const layer = new ShortestLayer();
-    for await (const bindings of this.operations.queryViaFrom([ ...frontier.keys() ])) {
+    for await (const bindings of this.operations.queryViaFrom([ ...frontier.keys() ], depth)) {
       const { from, to } = this.requireStep(bindings);
       const matchingRoots = frontier.get(from);
       if (!matchingRoots) {
@@ -239,8 +242,11 @@ export class BfsPathTraversal {
     }
   }
 
-  private async *emitShortestLayer(layer: ShortestLayer): AsyncGenerator<PathResult, void, undefined> {
-    const matches = await this.matchEndpoints(layer.endpointNodes);
+  private async *emitShortestLayer(
+    layer: ShortestLayer,
+    depth: number,
+  ): AsyncGenerator<PathResult, void, undefined> {
+    const matches = await this.matchEndpoints(layer.endpointNodes, depth);
 
     if (!this.cyclic) {
       for (const state of layer.states) {
@@ -269,7 +275,7 @@ export class BfsPathTraversal {
     if (this.maxDepth < 1) {
       return layer;
     }
-    for await (const bindings of this.operations.queryVia()) {
+    for await (const bindings of this.operations.queryVia(1)) {
       const { from, to } = this.requireStep(bindings);
       if (!this.roots.has(from)) {
         this.roots.set(from, {});
@@ -289,9 +295,12 @@ export class BfsPathTraversal {
     return layer;
   }
 
-  private async expandAllFrontier(frontier: TermMap<RDF.Term, AllPathState[]>): Promise<AllLayer> {
+  private async expandAllFrontier(
+    frontier: TermMap<RDF.Term, AllPathState[]>,
+    depth: number,
+  ): Promise<AllLayer> {
     const layer = new AllLayer();
-    for await (const bindings of this.operations.queryViaFrom([ ...frontier.keys() ])) {
+    for await (const bindings of this.operations.queryViaFrom([ ...frontier.keys() ], depth)) {
       const { from, to } = this.requireStep(bindings);
       const prefixes = frontier.get(from);
       if (!prefixes) {
@@ -318,8 +327,11 @@ export class BfsPathTraversal {
     return layer;
   }
 
-  private async *emitAllLayer(layer: AllLayer): AsyncGenerator<PathResult, void, undefined> {
-    const matches = await this.matchEndpoints(layer.endpointNodes);
+  private async *emitAllLayer(
+    layer: AllLayer,
+    depth: number,
+  ): AsyncGenerator<PathResult, void, undefined> {
+    const matches = await this.matchEndpoints(layer.endpointNodes, depth);
 
     if (!this.cyclic) {
       for (const state of layer.paths) {
@@ -340,6 +352,7 @@ export class BfsPathTraversal {
 
   private async matchEndpoints(
     candidates: TermSet<RDF.Term>,
+    depth: number,
   ): Promise<TermMap<RDF.Term, EndpointMatches | null>> {
     if (!this.operations.hasEnd) {
       const matches = new TermMap<RDF.Term, EndpointMatches | null>();
@@ -353,7 +366,7 @@ export class BfsPathTraversal {
     for (const term of unknown) {
       this.endpointCache.set(term, null);
     }
-    for await (const bindings of this.operations.queryEndFor(unknown)) {
+    for await (const bindings of this.operations.queryEndFor(unknown, depth)) {
       const term = this.require(bindings, this.operations.endVariable, 'END');
       const existing = this.endpointCache.get(term);
       if (existing) {
@@ -506,6 +519,15 @@ class AllLayer {
     this.endpointNodes.add(state.root);
     this.cycles.push(state);
   }
+}
+
+/** The number of partial paths a frontier holds, across every node in it. */
+function countAllStates(frontier: TermMap<RDF.Term, AllPathState[]>): number {
+  let total = 0;
+  for (const states of frontier.values()) {
+    total += states.length;
+  }
+  return total;
 }
 
 function getOrCreateTermMap<V>(

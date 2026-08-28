@@ -37,6 +37,23 @@ function nodePath(path) {
   return path.nodes.map(term => term.value.replace(EX, '')).join('-');
 }
 
+/** Flatten a physical query plan, following both plain and compacted children. */
+function planNodes(node, collected = []) {
+  if (!node || typeof node !== 'object') {
+    return collected;
+  }
+  if (node.logical) {
+    collected.push(node);
+  }
+  for (const child of node.children ?? []) {
+    planNodes(child, collected);
+  }
+  for (const child of node.childrenCompact ?? []) {
+    planNodes(child.firstOccurrence, collected);
+  }
+  return collected;
+}
+
 describe('Components.js path engine', () => {
   it('supports ordinary SPARQL and path queries on the same configured engine', async () => {
     const sources = [
@@ -278,6 +295,113 @@ describe('Components.js path engine', () => {
 
     assert.equal(invalidations, 1);
     assert.equal(flushes, 1);
+  });
+
+  it('explains a path query as a physical plan with a node per clause and depth', async () => {
+    const engine = new QueryEngine();
+    const sources = [
+      source(`<${EX}a> <${EX}edge> <${EX}b> .\n<${EX}b> <${EX}edge> <${EX}d> .`, 'explain'),
+    ];
+
+    const explained = await engine.explainPaths(spec(), { sources }, 'physical-json');
+
+    assert.equal(explained.explain, true);
+    assert.equal(explained.type, 'physical-json');
+    const nodes = planNodes(explained.data);
+    assert.equal(nodes.filter(node => node.logical === 'paths').length, 1);
+    // Each depth is reported separately, and nested under the path query rather
+    // than as a disconnected root.
+    assert.deepEqual(nodes.filter(node => node.logical === 'paths-via').map(node => node.depth), [ 1, 2 ]);
+    assert.equal(nodes.filter(node => node.logical === 'paths-start').length, 1);
+    assert.ok(nodes.some(node => node.logical === 'join-inner' && node.physical));
+
+    const compact = await engine.explainPaths(spec(), { sources }, 'physical');
+    assert.equal(compact.type, 'physical');
+    assert.match(compact.data, /^paths\(bfs\)/u);
+    assert.match(compact.data, /paths-via/u);
+  });
+
+  it('reports the parsed specification and refuses modes it cannot explain', async () => {
+    const engine = new QueryEngine();
+
+    const parsed = await engine.explainPathString(
+      `PREFIX ex: <${EX}>\nPATHS START ?from = ex:a END ?to = ex:d VIA ex:edge`,
+      undefined,
+      'parsed',
+    );
+    assert.equal(parsed.explain, true);
+    assert.equal(parsed.type, 'parsed');
+    assert.equal(parsed.data.via.from, '?from');
+
+    await assert.rejects(
+      engine.explainPaths(spec(), { sources: []}, 'logical'),
+      /cannot be explained in 'logical' mode/u,
+    );
+  });
+
+  it('releases the logger and the abort listener when the stream is destroyed', async () => {
+    let flushes = 0;
+    const logger = {
+      trace() {},
+      debug() {},
+      info() {},
+      warn() {},
+      error() {},
+      fatal() {},
+      flush() {
+        flushes++;
+      },
+    };
+    const listeners = [];
+    const signal = {
+      aborted: false,
+      addEventListener(type, listener) {
+        listeners.push({ type, listener });
+      },
+      removeEventListener(type, listener) {
+        const index = listeners.findIndex(entry => entry.type === type && entry.listener === listener);
+        if (index >= 0) {
+          listeners.splice(index, 1);
+        }
+      },
+    };
+
+    const stream = await new QueryEngine().queryPaths(spec(), {
+      sources: [ source(`<${EX}a> <${EX}edge> <${EX}d> .`, 'teardown') ],
+      log: logger,
+    }, { signal });
+    assert.equal(listeners.length, 1);
+
+    // A destroyed iterator never emits 'end', so neither the flush nor the
+    // listener removal may be hung off that event.
+    stream.destroy();
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.equal(flushes, 1);
+    assert.deepEqual(listeners, []);
+  });
+
+  it('submits a multi-pattern local VIA as one join holding the frontier', async () => {
+    const explained = await new QueryEngine().explainPaths(spec({
+      via: {
+        pattern: '?work ex:cast ?from . ?work ex:cast ?to . ?work ex:year ?y',
+        from: '?from',
+        to: '?to',
+      },
+    }), {
+      sources: [ source(`
+        <${EX}w> <${EX}cast> <${EX}a> .
+        <${EX}w> <${EX}cast> <${EX}d> .
+        <${EX}w> <${EX}year> "2020" .
+      `, 'nway') ],
+    }, 'physical-json');
+
+    const via = planNodes(explained.data).filter(node => node.logical === 'paths-via');
+    assert.equal(via.length, 1);
+    // The planned pattern's own join is flattened into the frontier join, so the
+    // RDF-join bus weighs the frontier against each pattern rather than against
+    // one opaque sub-join. A sub-join would evaluate as a second 'join' node.
+    assert.equal(planNodes(via[0]).filter(node => node.logical === 'join').length, 1);
   });
 
   it('can instantiate the path-enabled actor graph dynamically', async () => {
