@@ -8,6 +8,9 @@
   "sideEffects": false,
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "comunica-paths": "dist/cli.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -30,6 +33,7 @@
     "build": "tsc -p tsconfig.json && componentsjs-generator . && comunica-compile-config config/config-default.json urn:comunica:paths:init > engine-default.cjs",
     "clean": "rm -rf components dist engine-default.cjs *.tsbuildinfo",
     "prepack": "npm run build",
+    "query": "node dist/cli.js",
     "test": "npm run build && tsc -p tsconfig.types.json && node --test test/*.test.mjs",
     "test:live": "npm run build && node scripts/live-smoke.mjs"
   },

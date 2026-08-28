@@ -35,6 +35,36 @@ The same engine retains the complete `QueryEngineBase` API, so `queryBindings`,
 `queryQuads`, updates, result serialization, and other ordinary Comunica operations remain
 available.
 
+## Command line
+
+From this checkout, build once and run a PATHS query against one or more local RDF files:
+
+```bash
+npm run build
+npm run query -- route.paths \
+  --file data-a.ttl \
+  --file data-b.ttl
+```
+
+After installing the package, the equivalent command is:
+
+```bash
+comunica-paths route.paths --file data-a.ttl --file data-b.ttl
+```
+
+Remote RDF documents, SPARQL endpoints, and LDF endpoints can be supplied with repeatable
+`--url` options. Query text may also be piped over standard input:
+
+```bash
+cat route.paths | comunica-paths --url https://apps.okn.us/ldf/wikidata
+```
+
+The command writes JSON Lines: each line is one complete path containing its length, RDF/JS
+nodes, steps, and START/END bindings. This keeps results streamable and easy to pipe to tools
+such as `jq`. Local source formats are inferred from common RDF filename extensions. Use
+`comunica-paths --help` for the full option list; Ctrl-C cancels active Comunica streams and
+HTTP requests.
+
 ## Design boundary
 
 PATHS has its own Comunica action, actor, bus, and mediator, rather than adding a value to
