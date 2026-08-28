@@ -7,12 +7,16 @@ import type { PathQueryExecutionOptions, PathQuerySpec, PathResult } from './typ
 export interface IActionQueryPath extends IAction {
   spec: PathQuerySpec;
   context: IActionContext;
+  /** Selects exactly one path algorithm actor. */
+  algorithm: string;
   options?: PathQueryExecutionOptions;
 }
 
 /** Output from the dedicated path-query bus. */
 export interface IActorQueryPathOutput extends IActorOutput {
   pathStream: AsyncIterable<PathResult>;
+  /** The initialized request context shared by every internal query operation. */
+  context: IActionContext;
 }
 
 export type MediatorQueryPath = Mediate<IActionQueryPath, IActorQueryPathOutput>;

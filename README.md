@@ -167,6 +167,8 @@ The shipped [`config/config-default.json`](./config/config-default.json) imports
 standard SPARQL configuration and adds only the path actor, its mediator, and a path-enabled
 init actor. A downstream engine configuration can replace or tune these components in the
 usual Components.js way; `ActorQueryPathBfs` exposes `batchSize` as a configuration parameter.
+Path actors use an explicit execution discriminator. The public engine maps an omitted
+`algorithm` option to `bfs`; each actor should accept only its own value in `test()`.
 
 ## Status
 

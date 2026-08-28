@@ -1,14 +1,14 @@
 import type { MediatorRdfJoin } from '@comunica/bus-rdf-join';
 import type { IQueryProcessSequential } from '@comunica/bus-query-process';
-import { KeysInitQuery } from '@comunica/context-entries';
-import { passTestVoid, type IActorTest, type TestResult } from '@comunica/core';
+import { KeysHttp, KeysInitQuery } from '@comunica/context-entries';
+import { failTest, passTestVoid, type IActorTest, type TestResult } from '@comunica/core';
 import type {
   BindingsStream,
   IActionContext,
   IQueryOperationResultBindings,
   QueryStringContext,
 } from '@comunica/types';
-import { AlgebraFactory, type Algebra } from '@comunica/utils-algebra';
+import { Algebra, AlgebraFactory } from '@comunica/utils-algebra';
 import { MetadataValidationState } from '@comunica/utils-metadata';
 import { getSafeBindings } from '@comunica/utils-query-operation';
 import type * as RDF from '@rdfjs/types';
@@ -32,22 +32,33 @@ export class ActorQueryPathBfs extends ActorQueryPath {
     this.batchSize = args.batchSize;
   }
 
-  public async test(_action: IActionQueryPath): Promise<TestResult<IActorTest>> {
+  public async test(action: IActionQueryPath): Promise<TestResult<IActorTest>> {
+    if (action.algorithm !== 'bfs') {
+      return failTest(`Actor ${this.name} only supports the 'bfs' path algorithm`);
+    }
     return passTestVoid();
   }
 
   public async run(action: IActionQueryPath): Promise<IActorQueryPathOutput> {
-    const backend = new MediatedBindingsBackend(
+    const context = action.options?.signal ?
+      action.context.set(KeysHttp.httpAbortSignal, action.options.signal) :
+      action.context;
+    const backend = await MediatedBindingsBackend.create(
       this.queryProcessor,
       this.mediatorRdfJoin,
-      action.context,
+      context,
     );
     const engine = new PathQueryEngine<QueryStringContext>(
       backend,
       this.batchSize === undefined ? {} : { batchSize: this.batchSize },
     );
     return {
-      pathStream: engine.queryPaths(action.spec, undefined, action.options),
+      pathStream: engine.queryPaths(
+        action.spec,
+        undefined,
+        action.options?.signal ? { signal: action.options.signal } : undefined,
+      ),
+      context: backend.context,
     };
   }
 }
@@ -64,11 +75,24 @@ export interface IActorQueryPathBfsArgs extends IActorQueryPathArgs {
 class MediatedBindingsBackend {
   private readonly operations = new Map<string, { operation: Algebra.Operation; context: IActionContext }>();
 
-  public constructor(
+  private constructor(
     private readonly queryProcessor: IQueryProcessSequential,
     private readonly mediatorRdfJoin: MediatorRdfJoin,
-    private readonly context: IActionContext,
+    public readonly context: IActionContext,
   ) {}
+
+  public static async create(
+    queryProcessor: IQueryProcessSequential,
+    mediatorRdfJoin: MediatorRdfJoin,
+    context: IActionContext,
+  ): Promise<MediatedBindingsBackend> {
+    // Parsing an algebra operation runs Comunica's context preprocessing without
+    // invoking a query parser. All real operations are derived from this common
+    // initialized context, so request-scoped values such as NOW() and source IDs
+    // remain stable for the entire traversal.
+    const initialized = await queryProcessor.parse({ type: Algebra.Types.NOP }, context);
+    return new MediatedBindingsBackend(queryProcessor, mediatorRdfJoin, initialized.context);
+  }
 
   public async queryBindings(query: string): Promise<BindingsStream> {
     const { operation, context } = await this.prepare(query);

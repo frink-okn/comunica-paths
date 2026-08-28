@@ -1,4 +1,5 @@
 import { QueryEngineBase } from '@comunica/actor-init-query';
+import { KeysCore, KeysHttp, KeysInitQuery } from '@comunica/context-entries';
 import { ActionContext } from '@comunica/core';
 import type { QueryStringContext } from '@comunica/types';
 import type { ActorInitQueryPaths } from './ActorInitQueryPaths.js';
@@ -45,11 +46,30 @@ export class QueryEngine<QueryContext extends QueryStringContext = QueryStringCo
     context: QueryContext | undefined,
     options: PathQueryExecutionOptions | undefined,
   ): AsyncIterable<PathResult> {
+    let actionContext = ActionContext.ensureActionContext(context);
+    const signal = options?.signal ??
+      actionContext.get(KeysHttp.httpAbortSignal) ??
+      context?.httpAbortSignal;
+    if (signal) {
+      actionContext = actionContext.set(KeysHttp.httpAbortSignal, signal);
+    }
+    if (
+      actionContext.get(KeysInitQuery.invalidateCache) ??
+      context?.invalidateCache
+    ) {
+      await this.invalidateHttpCache(undefined, actionContext);
+    }
+
     const output = await this.actorInitQueryPaths.mediatorQueryPath.mediate({
       spec,
-      context: ActionContext.ensureActionContext(context),
-      ...(options ? { options } : {}),
+      context: actionContext,
+      algorithm: options?.algorithm ?? 'bfs',
+      ...(signal ? { options: { signal } } : {}),
     });
-    yield* output.pathStream;
+    try {
+      yield* output.pathStream;
+    } finally {
+      output.context.get(KeysCore.log)?.flush();
+    }
   }
 }

@@ -203,6 +203,10 @@
           "memberFieldName": "context"
         },
         {
+          "@id": "cpaths:components/ActorQueryPath.jsonld#IActionQueryPath__member_algorithm",
+          "memberFieldName": "algorithm"
+        },
+        {
           "@id": "cpaths:components/ActorQueryPath.jsonld#IActionQueryPath__member_options",
           "memberFieldName": "options"
         }
@@ -252,6 +256,10 @@
         {
           "@id": "cpaths:components/ActorQueryPath.jsonld#IActorQueryPathOutput__member_pathStream",
           "memberFieldName": "pathStream"
+        },
+        {
+          "@id": "cpaths:components/ActorQueryPath.jsonld#IActorQueryPathOutput__member_context",
+          "memberFieldName": "context"
         }
       ],
       "constructorArguments": []

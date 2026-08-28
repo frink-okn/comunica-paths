@@ -101,6 +101,72 @@ describe('Components.js path engine', () => {
     assert.equal(paths[0].nodes[2].value, `${EX}d`);
   });
 
+  it('uses one initialized context for request-scoped SPARQL values', async () => {
+    const paths = await collect(new QueryEngine().queryPaths(spec({
+      start: {
+        pattern: 'VALUES ?start { ex:a } BIND(NOW() AS ?stamp)',
+        node: '?start',
+      },
+      end: {
+        pattern: 'VALUES ?end { ex:d } BIND(NOW() AS ?stamp)',
+        node: '?end',
+      },
+    }), {
+      sources: [ source(`<${EX}a> <${EX}edge> <${EX}d> .`, 'timestamp') ],
+    }));
+
+    assert.equal(paths.length, 1);
+    assert.ok(paths[0].startBindings.get('stamp').equals(paths[0].endBindings.get('stamp')));
+  });
+
+  it('rejects algorithms not handled by the bundled BFS actor', async () => {
+    const engine = new QueryEngine();
+    const sources = [ source(`<${EX}a> <${EX}edge> <${EX}d> .`, 'algorithm') ];
+
+    assert.deepEqual(
+      (await collect(engine.queryPaths(spec(), { sources }, { algorithm: 'bfs' }))).map(nodePath),
+      [ 'a-d' ],
+    );
+    await assert.rejects(
+      collect(engine.queryPaths(spec(), { sources }, { algorithm: 'not-installed' })),
+      /only supports the 'bfs' path algorithm/u,
+    );
+  });
+
+  it('invalidates caches and flushes the initialized logger once per path request', async () => {
+    let invalidations = 0;
+    let flushes = 0;
+    class InstrumentedEngine extends QueryEngine {
+      async invalidateHttpCache() {
+        invalidations++;
+      }
+    }
+    const logger = {
+      trace() {},
+      debug() {},
+      info() {},
+      warn() {},
+      error() {},
+      fatal() {},
+      logGrouped(_key, emit) {
+        emit(1);
+      },
+      flush() {
+        flushes++;
+      },
+    };
+    const engine = new InstrumentedEngine();
+
+    await collect(engine.queryPaths(spec(), {
+      sources: [ source(`<${EX}a> <${EX}edge> <${EX}d> .`, 'lifecycle') ],
+      invalidateCache: true,
+      log: logger,
+    }));
+
+    assert.equal(invalidations, 1);
+    assert.equal(flushes, 1);
+  });
+
   it('can instantiate the path-enabled actor graph dynamically', async () => {
     const engine = await new QueryEngineFactory().create();
     const paths = await collect(engine.queryPathString(`

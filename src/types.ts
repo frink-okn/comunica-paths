@@ -100,6 +100,8 @@ export interface PathQueryEngineOptions {
 export interface PathQueryExecutionOptions {
   /** Cancels traversal and the currently active bindings stream. */
   signal?: AbortSignal;
+  /** Selects an installed path-query actor. The bundled implementation is `bfs`. */
+  algorithm?: string;
 }
 
 /** Public execution contract; its implementation remains outside Comunica's algebra. */

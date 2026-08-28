@@ -33,15 +33,20 @@ query-operation result with exact cardinality and variable metadata. The VIA or 
 operation is the other join entry. The configured RDF-join mediator selects and runs the
 physical join actor.
 
+The actor initializes one base Comunica context for the whole PATHS request and derives every
+START, VIA, and END operation context from it. Query-scoped values such as `NOW()`, source IDs,
+the RDF data factory, and the logger consequently remain stable across the traversal.
+
 Only traversal state and the breadth-first depth barrier are owned here. The barrier is needed
 to collect all predecessors at the same distance before emitting every shortest path. Source
 selection, graph-pattern evaluation, join ordering inside the pattern, and the physical join
 between the frontier and pattern remain Comunica responsibilities.
 
 The result is streaming at the natural boundary for shortest paths: input bindings are consumed
-asynchronously, active streams are destroyed on early return or cancellation, and completed
-depths emit without waiting for the entire reachable graph. `all` mode similarly processes one
-bounded depth at a time while retaining the path prefixes needed to reject non-simple cycles.
+asynchronously, active and late-resolving streams are destroyed on early return or cancellation,
+and the abort signal is also forwarded to Comunica's HTTP actors. Completed depths emit without
+waiting for the entire reachable graph. `all` mode similarly processes one bounded depth at a
+time while retaining the path prefixes needed to reject non-simple cycles.
 
 ## Blank nodes
 
@@ -70,7 +75,10 @@ for the path bus, registers the BFS actor, and registers the path-enabled init a
 the existing RDF-join mediator by reference. No replacement parser, algebra factory, RDF model,
 source layer, or join implementation is included.
 
-Alternative path algorithms can subclass `ActorQueryPath` and be selected by the path mediator.
+Alternative path algorithms can subclass `ActorQueryPath`. Callers select one with the
+`algorithm` execution option; each actor must accept only its own discriminator in `test()`, so
+the race mediator never chooses between competing implementations by completion timing. The
+public engine maps an omitted option to `bfs` before mediation.
 Alternative Comunica source and join actors can be installed through a downstream configuration
 without changing the traversal code.
 

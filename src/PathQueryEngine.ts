@@ -93,21 +93,26 @@ implements IPathQueryEngine<QueryContext> {
     options: PathQueryExecutionOptions = {},
   ): AsyncIterable<PathResult> {
     validateSpec(spec);
+    if (options.algorithm !== undefined && options.algorithm !== 'bfs') {
+      throw new InvalidPathQueryError(`PathQueryEngine only supports the 'bfs' path algorithm`);
+    }
+    const signal = options.signal ?? context?.httpAbortSignal;
+    context = contextWithAbortSignal(context, signal);
     const templates = this.compileTemplates(spec);
     if (spec.maxPaths === 0) {
       return;
     }
 
     const traversal = spec.mode === 'all' ?
-      this.queryAll(spec, templates, context, options.signal) :
-      this.queryShortest(spec, templates, context, options.signal);
+      this.queryAll(spec, templates, context, signal) :
+      this.queryShortest(spec, templates, context, signal);
     const offset = spec.offset ?? 0;
     const limit = spec.maxPaths ?? Number.POSITIVE_INFINITY;
     let skipped = 0;
     let emitted = 0;
 
     for await (const result of traversal) {
-      throwIfCancelled(options.signal);
+      throwIfCancelled(signal);
       if (skipped < offset) {
         skipped++;
         continue;
@@ -661,6 +666,8 @@ implements IPathQueryEngine<QueryContext> {
         const stream = await abortable(
           this.engine.queryBindingsWithBindings(query, variable, frontierBindings, context),
           signal,
+          undefined,
+          lateStream => lateStream.destroy(),
         );
         yield* consumeBindingsStream(stream, signal);
       }
@@ -708,7 +715,12 @@ implements IPathQueryEngine<QueryContext> {
     signal: AbortSignal | undefined,
   ): AsyncIterable<Bindings> {
     throwIfCancelled(signal);
-    const stream = await abortable(this.engine.queryBindings(query, context), signal);
+    const stream = await abortable(
+      this.engine.queryBindings(query, context),
+      signal,
+      undefined,
+      lateStream => lateStream.destroy(),
+    );
     yield* consumeBindingsStream(stream, signal);
   }
 }
@@ -856,6 +868,16 @@ function contextWithInitialBindings<QueryContext extends QueryStringContext>(
   return { ...context, initialBindings } as QueryContext;
 }
 
+function contextWithAbortSignal<QueryContext extends QueryStringContext>(
+  context: QueryContext | undefined,
+  signal: AbortSignal | undefined,
+): QueryContext | undefined {
+  if (!signal) {
+    return context;
+  }
+  return { ...context, httpAbortSignal: signal } as QueryContext;
+}
+
 function* batches<T>(values: readonly T[], size: number): Iterable<readonly T[]> {
   for (let offset = 0; offset < values.length; offset += size) {
     yield values.slice(offset, offset + size);
@@ -940,25 +962,50 @@ async function abortable<T>(
   promise: Promise<T>,
   signal: AbortSignal | undefined,
   onAbort?: () => void,
+  onLateResolve?: (value: T) => void,
 ): Promise<T> {
   if (!signal) {
     return promise;
   }
-  throwIfCancelled(signal);
 
   return new Promise<T>((resolve, reject) => {
+    let settled = false;
     const handleAbort = (): void => {
-      onAbort?.();
+      if (settled) {
+        return;
+      }
+      settled = true;
+      try {
+        onAbort?.();
+      } catch {
+        // Cancellation must remain observable even if resource cleanup fails.
+      }
       reject(new PathQueryCancelledError());
     };
     signal.addEventListener('abort', handleAbort, { once: true });
+    if (signal.aborted) {
+      handleAbort();
+    }
     promise.then(
       (value) => {
         signal.removeEventListener('abort', handleAbort);
+        if (settled) {
+          try {
+            onLateResolve?.(value);
+          } catch {
+            // The request is already cancelled, so late cleanup is best effort.
+          }
+          return;
+        }
+        settled = true;
         resolve(value);
       },
       (error: unknown) => {
         signal.removeEventListener('abort', handleAbort);
+        if (settled) {
+          return;
+        }
+        settled = true;
         reject(error);
       },
     );

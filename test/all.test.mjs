@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { describe, it } from 'node:test';
 import { QueryEngine } from '@comunica/query-sparql';
-import { PathQueryCancelledError, PathQueryEngine } from '../dist/index.js';
+import { InvalidPathQueryError, PathQueryCancelledError, PathQueryEngine } from '../dist/index.js';
 
 const EX = 'https://example.org/';
 const sources = [
@@ -124,6 +124,46 @@ describe('all and cyclic path execution', () => {
 
     await assert.rejects(pending, PathQueryCancelledError);
     assert.equal(destroyed, true);
+  });
+
+  it('propagates AbortSignal to Comunica and destroys a stream that resolves after cancellation', async () => {
+    let resolveStream;
+    let receivedContext;
+    let destroyed = false;
+    const deferredStream = new Promise((resolve) => {
+      resolveStream = resolve;
+    });
+    const engine = new PathQueryEngine({
+      queryBindings(_query, context) {
+        receivedContext = context;
+        return deferredStream;
+      },
+    });
+    const controller = new AbortController();
+    const pending = engine.queryPaths(spec(), { sources: [] }, { signal: controller.signal })
+      [Symbol.asyncIterator]().next();
+
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(receivedContext.httpAbortSignal, controller.signal);
+    controller.abort();
+    await assert.rejects(pending, PathQueryCancelledError);
+
+    resolveStream({
+      destroy() {
+        destroyed = true;
+      },
+      async *[Symbol.asyncIterator]() {},
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(destroyed, true);
+  });
+
+  it('does not silently ignore an unsupported algorithm discriminator', async () => {
+    const engine = new PathQueryEngine(new QueryEngine());
+    await assert.rejects(
+      collect(engine.queryPaths(spec(), { sources }, { algorithm: 'not-installed' })),
+      InvalidPathQueryError,
+    );
   });
 });
 
