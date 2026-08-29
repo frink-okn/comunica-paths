@@ -193,7 +193,9 @@ exactly as Comunica's own physical-explain actor does.
 ## Execution model
 
 1. Parse and plan START, END, and VIA once, against one initialized request context.
-2. Evaluate START and stream its distinct nodes into the initial frontier.
+2. Evaluate the first depth as START joined with VIA, in one planned query, so that Comunica
+   orders the two itself and a single source can answer both at once. A START pattern binding
+   more than its node is evaluated on its own instead, and its distinct nodes seed the frontier.
 3. Expand the whole frontier for a depth as one `VALUES` relation joined with the planned VIA
    pattern, letting the RDF-join mediator choose and chunk the physical join.
 4. Consume VIA solutions incrementally as they arrive, building the next frontier as they stream

@@ -6,6 +6,13 @@ import { PathQueryCancelledError, QueryEngine, QueryEngineFactory } from '../dis
 
 const EX = 'https://example.org/';
 
+// A pattern reaches the endpoint either as a full IRI or in the prologue's
+// prefixed form, depending on whether the source received the whole query.
+function mentions(query, name) {
+  return new RegExp(`(?:<${EX}|ex:)${name}\\b`, 'u').test(query ?? '');
+}
+
+
 function source(value, name) {
   return {
     type: 'serialized',
@@ -149,9 +156,9 @@ describe('Components.js path engine', () => {
 
       let vars;
       let bindings;
-      if (query.includes(`<${EX}edge>`)) {
+      if (mentions(query, 'edge')) {
         vars = [ 'start', 'end' ];
-        bindings = query.includes(`<${EX}d>`) ? [] : [
+        bindings = mentions(query, 'd') ? [] : [
           {
             start: { type: 'uri', value: `${EX}a` },
             end: { type: 'uri', value: `${EX}d` },
@@ -186,7 +193,7 @@ describe('Components.js path engine', () => {
     }));
 
     assert.deepEqual(paths.map(nodePath), [ 'a-d' ], endpointQueries.join('\n---\n'));
-    const viaQueries = endpointQueries.filter(query => query.includes(`<${EX}edge>`));
+    const viaQueries = endpointQueries.filter(query => mentions(query, 'edge'));
     assert.equal(viaQueries.length, 2, endpointQueries.join('\n---\n'));
     assert.equal(endpointQueries.length, viaQueries.length,
       'source-independent START and END forms should execute locally');
@@ -212,7 +219,7 @@ describe('Components.js path engine', () => {
 
       let vars;
       let bindings;
-      if (query.includes(`<${EX}cast>`)) {
+      if (mentions(query, 'cast')) {
         vars = [ 'start', 'work', 'end' ];
         bindings = [{
           start: { type: 'uri', value: `${EX}a` },
@@ -239,7 +246,7 @@ describe('Components.js path engine', () => {
     }));
 
     assert.deepEqual(paths.map(nodePath), [ 'a-d' ], endpointQueries.join('\n---\n'));
-    const viaQuery = endpointQueries.find(query => query.includes(`<${EX}cast>`));
+    const viaQuery = endpointQueries.find(query => mentions(query, 'cast'));
     assert.ok(viaQuery);
     assert.match(viaQuery, /VALUES\s+\?start/iu);
     assert.doesNotMatch(viaQuery, /\{\s*SELECT\b/iu);
@@ -308,13 +315,93 @@ describe('Components.js path engine', () => {
     // Each depth is reported separately, and nested under the path query rather
     // than as a disconnected root.
     assert.deepEqual(nodes.filter(node => node.logical === 'paths-via').map(node => node.depth), [ 1, 2 ]);
-    assert.equal(nodes.filter(node => node.logical === 'paths-start').length, 1);
+    // START projects only its node, so it is joined into the first depth rather
+    // than evaluated as a clause of its own.
+    assert.equal(nodes.filter(node => node.logical === 'paths-start').length, 0);
     assert.ok(nodes.some(node => node.logical === 'join-inner' && node.physical));
 
     const compact = await engine.explainPaths(spec(), { sources }, 'physical');
     assert.equal(compact.type, 'physical');
     assert.match(compact.data, /^paths\(bfs\)/u);
     assert.match(compact.data, /paths-via/u);
+  });
+
+  it('joins START into the first depth instead of materializing it', async () => {
+    const queries = [];
+    const fetch = async(input, init = {}) => {
+      const url = new URL(typeof input === 'string' ? input : input.url);
+      let query = url.searchParams.get('query');
+      if (!query && init.body !== undefined) {
+        query = new URLSearchParams(String(init.body)).get('query');
+      }
+      query ??= '';
+      const json = body => new Response(JSON.stringify(body), {
+        headers: { 'content-type': 'application/sparql-results+json' },
+      });
+      if (/^\s*ASK/imu.test(query)) {
+        return json({ head: {}, boolean: true });
+      }
+      if (/COUNT/iu.test(query)) {
+        return json({ head: { vars: [ 'count' ]}, results: { bindings: [
+          { count: { type: 'literal', value: '500' }},
+        ]}});
+      }
+      queries.push(query);
+      if (query.includes('edge')) {
+        const reached = query.includes(`${EX}b`);
+        return json({ head: { vars: [ 'start', 'end' ]}, results: { bindings: reached ? [] : [
+          { start: { type: 'uri', value: `${EX}a` }, end: { type: 'uri', value: `${EX}b` }},
+        ]}});
+      }
+      return json({ head: { vars: [ 'start' ]}, results: { bindings: [
+        { start: { type: 'uri', value: `${EX}a` }},
+      ]}});
+    };
+
+    const paths = await collect(await new QueryEngine().queryPaths({
+      prologue: `PREFIX ex: <${EX}>`,
+      start: { pattern: '?start a ex:Person', node: '?start' },
+      end: { pattern: 'VALUES ?end { ex:b }', node: '?end' },
+      via: { pattern: '?start ex:edge ?end' },
+    }, { sources: [{ type: 'sparql', value: `${EX}sparql` }], fetch }));
+
+    assert.deepEqual(paths.map(nodePath), [ 'a-b' ]);
+    assert.equal(paths[0].startBindings.get('start').value, `${EX}a`);
+    // START never travels as a request of its own: it reaches the endpoint
+    // joined with VIA, so the source orders the two itself.
+    assert.deepEqual(queries.filter(query => !query.includes('edge')), []);
+    assert.match(queries[0], /Person/u);
+    assert.match(queries[0], /edge/u);
+    assert.doesNotMatch(queries[0], /VALUES\s+\?start/iu);
+  });
+
+  it('materializes START when it projects more than the path node', async () => {
+    const sources = [ source(`
+      <${EX}a> <${EX}edge> <${EX}b> .
+      <${EX}a> a <${EX}Person> .
+      <${EX}a> <${EX}name> "Ann" .
+      <${EX}a> <${EX}name> "Annie" .
+    `, 'fallback') ];
+    const explained = await new QueryEngine().explainPaths({
+      prologue: `PREFIX ex: <${EX}>`,
+      start: { pattern: '?start a ex:Person . ?start ex:name ?n', node: '?start' },
+      end: { pattern: 'VALUES ?end { ex:b }', node: '?end' },
+      via: { pattern: '?start ex:edge ?end' },
+    }, { sources }, 'physical-json');
+
+    // Joining a START that binds ?n could join it to a VIA variable of the same
+    // name, which the semantics forbid, so this one keeps its own evaluation.
+    const nodes = planNodes(explained.data);
+    assert.equal(nodes.filter(node => node.logical === 'paths-start').length, 1);
+
+    const paths = await collect(await new QueryEngine().queryPaths({
+      prologue: `PREFIX ex: <${EX}>`,
+      start: { pattern: '?start a ex:Person . ?start ex:name ?n', node: '?start' },
+      end: { pattern: 'VALUES ?end { ex:b }', node: '?end' },
+      via: { pattern: '?start ex:edge ?end' },
+    }, { sources }));
+    // One path per START solution, as a join of the two patterns produces.
+    assert.deepEqual(paths.map(path => path.startBindings.get('n').value).sort(), [ 'Ann', 'Annie' ]);
   });
 
   it('reports the parsed specification and refuses modes it cannot explain', async () => {

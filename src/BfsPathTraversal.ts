@@ -101,7 +101,12 @@ export class BfsPathTraversal {
     let frontier = new TermMap<RDF.Term, TermSet<RDF.Term>>();
     let depth = 0;
 
-    if (this.operations.hasStart) {
+    if (this.operations.canJoinStart) {
+      const firstLayer = await this.expandShortestFromStart();
+      frontier = firstLayer.frontier;
+      depth = 1;
+      yield* this.emitShortestLayer(firstLayer, depth);
+    } else if (this.operations.hasStart) {
       await this.loadRoots();
       for (const root of this.roots.keys()) {
         getOrCreateTermMap(this.distances, root).set(root, 0);
@@ -116,15 +121,18 @@ export class BfsPathTraversal {
     this.metadata.recordDepth(depth, frontier.size);
 
     while (frontier.size > 0 && depth < this.maxDepth) {
+      // Checked before expanding rather than after, so that a first depth which
+      // already settled every pair — whether it came from START joined with VIA
+      // or from a seeded frontier — stops here too.
+      if (this.fixedEndpointsSettled()) {
+        return;
+      }
       const nextDepth = depth + 1;
       const layer = await this.expandShortestFrontier(frontier, nextDepth);
       yield* this.emitShortestLayer(layer, nextDepth);
       frontier = layer.frontier;
       depth = nextDepth;
       this.metadata.recordDepth(depth, frontier.size);
-      if (this.fixedEndpointsSettled()) {
-        return;
-      }
     }
   }
 
@@ -132,7 +140,12 @@ export class BfsPathTraversal {
     let frontier = new TermMap<RDF.Term, AllPathState[]>();
     let depth = 0;
 
-    if (this.operations.hasStart) {
+    if (this.operations.canJoinStart) {
+      const firstLayer = await this.expandAllFromStart();
+      frontier = firstLayer.frontier;
+      depth = 1;
+      yield* this.emitAllLayer(firstLayer, depth);
+    } else if (this.operations.hasStart) {
       await this.loadRoots();
       for (const root of this.roots.keys()) {
         frontier.set(root, [{ root, current: root, nodes: [ root ], steps: []}]);
@@ -167,6 +180,71 @@ export class BfsPathTraversal {
         this.roots.set(term, { bindings: [ bindings ]});
       }
     }
+  }
+
+  /**
+   * Expand the first depth from START joined with VIA, in one mediated query.
+   *
+   * A root is recorded as its edges arrive rather than up front. A start node
+   * with no outgoing edge never appears, which changes no result: a path of no
+   * edges is never emitted, so such a node could not contribute one.
+   */
+  private async expandShortestFromStart(): Promise<ShortestLayer> {
+    const layer = new ShortestLayer();
+    if (this.maxDepth < 1) {
+      return layer;
+    }
+    for await (const bindings of this.operations.queryViaFromStart()) {
+      const { from, to } = this.requireStep(bindings);
+      if (!this.roots.has(from)) {
+        this.registerJoinedRoot(from, bindings);
+        getOrCreateTermMap(this.distances, from).set(from, 0);
+      }
+      this.discoverShortestEdge(from, from, to, bindings, 1, layer);
+    }
+    return layer;
+  }
+
+  /** Expand the first depth from START joined with VIA, enumerating every path. */
+  private async expandAllFromStart(): Promise<AllLayer> {
+    const layer = new AllLayer();
+    if (this.maxDepth < 1) {
+      return layer;
+    }
+    for await (const bindings of this.operations.queryViaFromStart()) {
+      const { from, to } = this.requireStep(bindings);
+      if (!this.roots.has(from)) {
+        this.registerJoinedRoot(from, bindings);
+      }
+      const state: AllPathState = {
+        root: from,
+        current: to,
+        nodes: [ from, to ],
+        steps: [{ from, to, bindings }],
+      };
+      if (to.equals(from)) {
+        layer.addCycle(state);
+      } else {
+        layer.addPath(state);
+      }
+    }
+    return layer;
+  }
+
+  /**
+   * Record a root discovered by the joined first depth.
+   *
+   * The joined solution carries START's variables alongside VIA's, and START is
+   * only joined when it projects nothing but its node, so restricting the
+   * solution to that variable reproduces exactly what evaluating START on its
+   * own would have bound. Every solution for one root is therefore identical,
+   * and keeping the first avoids multiplying the emitted paths.
+   */
+  private registerJoinedRoot(root: RDF.Term, bindings: RDF.Bindings): void {
+    const startVariable = this.operations.startVariable;
+    this.roots.set(root, {
+      bindings: [ bindings.filter((_value, key) => key.equals(startVariable)) ],
+    });
   }
 
   private async expandShortestUnconstrained(): Promise<ShortestLayer> {

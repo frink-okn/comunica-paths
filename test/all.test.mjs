@@ -4,6 +4,13 @@ import { describe, it } from 'node:test';
 import { InvalidPathQueryError, PathQueryCancelledError, QueryEngine as PathsQueryEngine } from '../dist/index.js';
 
 const EX = 'https://example.org/';
+
+// A pattern reaches the endpoint either as a full IRI or in the prologue's
+// prefixed form, depending on whether the source received the whole query.
+function mentions(query, name) {
+  return new RegExp(`(?:<${EX}|ex:)${name}\\b`, 'u').test(query ?? '');
+}
+
 const sources = [
   {
     type: 'serialized',
@@ -103,7 +110,7 @@ describe('all and cyclic path execution', () => {
       const query = url.searchParams.get('query') ?? new URLSearchParams(init.body ?? '').get('query');
       // Answer planning and endpoint traversal alike, but never complete the
       // traversal request, so that the abort lands on an in-flight stream.
-      if (query?.includes(`<${EX}edge>`)) {
+      if (mentions(query, 'edge')) {
         sawViaRequest(init.signal);
         return new Promise((_resolve, reject) => {
           init.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });

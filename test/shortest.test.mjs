@@ -4,6 +4,13 @@ import { describe, it } from 'node:test';
 import { InvalidPathQueryError, QueryEngine as PathsQueryEngine } from '../dist/index.js';
 
 const EX = 'https://example.org/';
+
+// A pattern reaches the endpoint either as a full IRI or in the prologue's
+// prefixed form, depending on whether the source received the whole query.
+function mentions(query, name) {
+  return new RegExp(`(?:<${EX}|ex:)${name}\\b`, 'u').test(query ?? '');
+}
+
 const sources = [
   {
     type: 'serialized',
@@ -131,10 +138,10 @@ describe('shortest path execution', () => {
       const query = url.searchParams.get('query') ?? new URLSearchParams(init.body).get('query');
       endpointQueries.push(query);
 
-      if (query.includes(`<${EX}edge>`)) {
+      if (mentions(query, 'edge')) {
         // The first depth fans out to three nodes; the second closes on the target.
-        const fanOut = /VALUES[^}]*\bstart\b/u.test(query) || query.includes(`<${EX}a>`);
-        return sparqlJson([ 'from', 'to' ], fanOut && !query.includes(`<${EX}f1>`) ?
+        const fanOut = /VALUES[^}]*\bstart\b/u.test(query) || mentions(query, 'a');
+        return sparqlJson([ 'from', 'to' ], fanOut && !mentions(query, 'f1') ?
           [ 'f1', 'f2', 'f3' ].map(to => ({
             start: { type: 'uri', value: `${EX}a` },
             end: { type: 'uri', value: `${EX}${to}` },
@@ -155,7 +162,7 @@ describe('shortest path execution', () => {
     }, { sources: [{ type: 'sparql', value: `${EX}sparql` }], fetch }));
 
     assert.deepEqual(paths.map(nodePath).sort(), [ 'a-f1-d', 'a-f2-d', 'a-f3-d' ]);
-    const viaQueries = endpointQueries.filter(query => query.includes(`<${EX}edge>`));
+    const viaQueries = endpointQueries.filter(query => mentions(query, 'edge'));
     assert.equal(viaQueries.length, 2, endpointQueries.join('\n---\n'));
     // The whole three-node frontier travels in one request, not one request per node.
     const secondDepth = viaQueries[1];

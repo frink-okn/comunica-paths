@@ -34,6 +34,8 @@ interface IPathPattern {
   context: IActionContext;
   /** Whether one source received the complete query, as a SPARQL endpoint does. */
   wholeQuerySource: boolean;
+  /** The variables the pattern projects. */
+  variables: readonly RDF.Variable[];
 }
 
 export interface IPathOperationsArgs {
@@ -93,6 +95,8 @@ export class PathOperations {
     private readonly startPattern: IPathPattern | undefined,
     private readonly viaPattern: IPathPattern,
     private readonly endPattern: IPathPattern | undefined,
+    /** START joined with VIA, planned as one query, when START may be joined. */
+    private readonly startViaPattern: IPathPattern | undefined,
     /** The source of a traversal step, and the node a START solution binds. */
     public readonly startVariable: RDF.Variable,
     /** The target of a traversal step, and the node an END solution binds. */
@@ -130,6 +134,26 @@ export class PathOperations {
     const start = await prepare(spec.start.pattern);
     const end = await prepare(spec.end.pattern);
     const endVariable = dataFactory.variable(spec.end.node.slice(1));
+    const startVariable = dataFactory.variable(spec.start.node.slice(1));
+
+    // Plan the first depth as one query when START projects nothing but its
+    // node. A SPARQL join joins on every shared variable, so a START pattern
+    // binding anything else could share a name with VIA and be joined to it,
+    // which the PATHS semantics forbid: a path solution exposes only the
+    // endpoint variables, and VIA's own variables belong to a single step.
+    // Projecting nothing else also keeps one START solution per node, so the
+    // join is not multiplied by solutions the traversal would collapse again.
+    const startVia = start &&
+      start.variables.length === 1 &&
+      start.variables[0]!.equals(startVariable) ?
+      await preparePattern(
+        args.queryProcessor,
+        algebraFactory,
+        context,
+        spec,
+        `{\n${spec.start.pattern!}\n}\n{\n${spec.via.pattern}\n}`,
+      ) :
+      undefined;
 
     return new PathOperations(
       args,
@@ -137,7 +161,8 @@ export class PathOperations {
       start,
       via,
       end,
-      dataFactory.variable(spec.start.node.slice(1)),
+      startVia,
+      startVariable,
       endVariable,
       end ? readFixedNodes(end.operation, endVariable) : undefined,
     );
@@ -159,6 +184,38 @@ export class PathOperations {
   /** Evaluate the VIA pattern without any frontier constraint, as the first depth. */
   public queryVia(depth: number): AsyncIterable<RDF.Bindings> {
     return this.consume(this.viaPattern, this.viaPattern.operation, 'paths-via', depth);
+  }
+
+  /**
+   * Whether the first depth can be evaluated as START joined with VIA.
+   *
+   * Only when START projects nothing but its node. A SPARQL join joins on every
+   * shared variable, so a START pattern binding anything else could share a name
+   * with VIA and be joined to it — which the PATHS semantics forbid, since a
+   * path solution exposes only the endpoint variables and VIA's own variables
+   * belong to a single step. Projecting nothing else also keeps one START
+   * solution per node, so the join is not multiplied by solutions the traversal
+   * would immediately collapse.
+   */
+  public get canJoinStart(): boolean {
+    return this.startViaPattern !== undefined;
+  }
+
+  /**
+   * Evaluate the first depth as START joined with VIA, in one operation.
+   *
+   * Handing both patterns to Comunica together is what lets it order the join
+   * itself: a selective VIA can drive a broad START, and a single source can
+   * answer the whole thing in one request. Materializing START first would
+   * decide that ordering here, where the cardinalities are not known.
+   *
+   * The join is planned rather than assembled from the two planned patterns.
+   * Source grouping is an optimizer step, so a join built afterwards reaches the
+   * join mediator as two separately scoped entries and can never become one
+   * source request — the very thing the join is for.
+   */
+  public queryViaFromStart(): AsyncIterable<RDF.Bindings> {
+    return this.consume(this.startViaPattern!, this.startViaPattern!.operation, 'paths-via', 1);
   }
 
   /** Evaluate the VIA pattern for every frontier node in one mediated join. */
@@ -388,7 +445,12 @@ async function preparePattern(
     // Nothing to assign a source to. Planning a source-independent form such as
     // a bare VALUES block would only scope it to a source, turning a constant
     // endpoint into a remote request.
-    return { operation: projection.input, context: parsed.context, wholeQuerySource: false };
+    return {
+      operation: projection.input,
+      context: parsed.context,
+      wholeQuerySource: false,
+      variables: [ ...projection.variables ],
+    };
   }
 
   // Plan against the context parsing produced, the way Comunica's own query
@@ -405,6 +467,7 @@ async function preparePattern(
     operation: unwrapPlannedProjection(planned.operation),
     context: planned.context,
     wholeQuerySource,
+    variables: [ ...projection.variables ],
   };
 }
 

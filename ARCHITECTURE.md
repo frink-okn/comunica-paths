@@ -49,8 +49,21 @@ A pattern that reads no dataset — a bare `VALUES` block, for instance — is n
 It has no source to be assigned, and planning it would only scope a constant endpoint to a
 source and turn it into a remote request.
 
-At each depth the actor builds a `VALUES` relation over the frontier and joins it with the
-planned pattern. `VALUES` reports an exact cardinality, so the RDF-join mediator sees the true
+The first depth is planned as START joined with VIA, as one query, whenever START projects
+nothing but its node. Materializing START first would settle the join order here, where no
+cardinality is known; planning the two together leaves that to Comunica, and lets a single
+source answer both in one request. The join has to be *planned*, not assembled from the two
+already-planned patterns: source grouping is an optimizer step, so a join built afterwards
+reaches the join mediator as two separately scoped entries and can never become one request.
+
+START is joined only when it projects its node alone. A SPARQL join joins on every shared
+variable, so a START pattern binding anything else could share a name with VIA and be joined to
+it — which the PATHS semantics forbid, since a path solution exposes only the endpoint variables
+and VIA's own variables belong to a single step. It also keeps one START solution per node, so
+the join is not multiplied by solutions the traversal would collapse again.
+
+At each subsequent depth the actor builds a `VALUES` relation over the frontier and joins it with
+the planned pattern. `VALUES` reports an exact cardinality, so the RDF-join mediator sees the true
 frontier size and selects the physical join: a bind join, a hash join, or a bind join that
 pushes the frontier into the source request. Nothing here batches the frontier — the whole
 frontier is offered as one relation, and the join actors chunk it using their own block sizes.
