@@ -101,6 +101,14 @@ export class BfsPathTraversal {
     let frontier = new TermMap<RDF.Term, TermSet<RDF.Term>>();
     let depth = 0;
 
+    // A bound of zero edges admits no path, since a path of no edges is never
+    // emitted. Returning here reports no depth as completed, and spares the
+    // clause evaluations whose results could not be used anyway.
+    if (this.maxDepth < 1) {
+      this.metadata.recordDepth(depth, 0);
+      return;
+    }
+
     if (this.operations.canJoinStart) {
       const firstLayer = await this.expandShortestFromStart();
       frontier = firstLayer.frontier;
@@ -139,6 +147,14 @@ export class BfsPathTraversal {
   private async *traverseAll(): AsyncGenerator<PathResult, void, undefined> {
     let frontier = new TermMap<RDF.Term, AllPathState[]>();
     let depth = 0;
+
+    // A bound of zero edges admits no path, since a path of no edges is never
+    // emitted. Returning here reports no depth as completed, and spares the
+    // clause evaluations whose results could not be used anyway.
+    if (this.maxDepth < 1) {
+      this.metadata.recordDepth(depth, 0);
+      return;
+    }
 
     if (this.operations.canJoinStart) {
       const firstLayer = await this.expandAllFromStart();
@@ -191,9 +207,6 @@ export class BfsPathTraversal {
    */
   private async expandShortestFromStart(): Promise<ShortestLayer> {
     const layer = new ShortestLayer();
-    if (this.maxDepth < 1) {
-      return layer;
-    }
     for await (const bindings of this.operations.queryViaFromStart()) {
       const { from, to } = this.requireStep(bindings);
       if (!this.roots.has(from)) {
@@ -208,9 +221,6 @@ export class BfsPathTraversal {
   /** Expand the first depth from START joined with VIA, enumerating every path. */
   private async expandAllFromStart(): Promise<AllLayer> {
     const layer = new AllLayer();
-    if (this.maxDepth < 1) {
-      return layer;
-    }
     for await (const bindings of this.operations.queryViaFromStart()) {
       const { from, to } = this.requireStep(bindings);
       if (!this.roots.has(from)) {
@@ -249,9 +259,6 @@ export class BfsPathTraversal {
 
   private async expandShortestUnconstrained(): Promise<ShortestLayer> {
     const layer = new ShortestLayer();
-    if (this.maxDepth < 1) {
-      return layer;
-    }
     for await (const bindings of this.operations.queryVia(1)) {
       const { from, to } = this.requireStep(bindings);
       if (!this.roots.has(from)) {
@@ -348,9 +355,6 @@ export class BfsPathTraversal {
 
   private async expandAllUnconstrained(): Promise<AllLayer> {
     const layer = new AllLayer();
-    if (this.maxDepth < 1) {
-      return layer;
-    }
     for await (const bindings of this.operations.queryVia(1)) {
       const { from, to } = this.requireStep(bindings);
       if (!this.roots.has(from)) {
