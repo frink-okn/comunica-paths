@@ -4,7 +4,7 @@ Streaming path queries over one or more RDF sources through
 [Comunica](https://comunica.dev/), without maintaining forks of SPARQL.js,
 sparqlalgebrajs, RDF/JS, or Comunica.
 
-This is a standalone package; it does not live inside or fork the Comunica monorepo.
+The query syntax follows the `PATHS` [SPARQL extension implemented by Stardog](https://docs.stardog.com/query-stardog/path-queries).
 
 ## Usage
 
