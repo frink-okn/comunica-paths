@@ -4,6 +4,9 @@ import {
   type PathQuerySpec,
   type PathStream,
 } from '../src/index.js';
+// The browser entry carries the same surface bar the Components.js factory, so
+// a public export added to the Node barrel alone fails to compile here.
+import * as browserSurface from '../src/index-browser.js';
 
 const spec = {
   start: { pattern: 'VALUES ?from { <urn:a> }', node: '?from' },
@@ -23,6 +26,11 @@ const serviceResults: Promise<PathStream> = engine.queryPathService(
 );
 const dynamicEngine = new QueryEngineFactory().create();
 
+// Every export but the factory has to be reachable from the browser entry too.
+const browserEngine: PathEnabledQueryEngine = new browserSurface.QueryEngine();
+const browserPaths: Promise<PathStream> = browserEngine.queryPaths(spec, { sources: []});
+
+void browserPaths;
 void results;
 void textualResults;
 void serviceResults;

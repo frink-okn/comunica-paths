@@ -13,6 +13,10 @@
   },
   "exports": {
     ".": {
+      "browser": {
+        "types": "./dist/index-browser.d.ts",
+        "default": "./dist/index-browser.js"
+      },
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.js"
@@ -20,6 +24,9 @@
     "./config/config-default.json": "./config/config-default.json",
     "./components/*": "./components/*",
     "./package.json": "./package.json"
+  },
+  "browser": {
+    "./dist/index.js": "./dist/index-browser.js"
   },
   "files": [
     "components",

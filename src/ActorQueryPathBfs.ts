@@ -16,6 +16,7 @@ import { KeysQueryPath } from './context-entries.js';
 import { PathQueryCancelledError } from './errors.js';
 import { PathOperations } from './PathOperations.js';
 import { PathMetadata, PathResultIterator } from './PathResultIterator.js';
+import { PathTraversalStats } from './PathStats.js';
 import { validateSpec } from './spec.js';
 
 const ALGORITHM = 'bfs';
@@ -60,17 +61,21 @@ export class ActorQueryPathBfs extends ActorQueryPath {
       context.getSafe(KeysInitQuery.dataFactory),
     );
     const metadata = new PathMetadata(action.spec.maxPaths);
+    const plan = this.logPlan(context, action);
+    // Measuring costs something on every solution, so it is only done when a plan
+    // was asked for, which is the only place the measurements are reported.
+    const stats = plan ? new PathTraversalStats() : undefined;
     const operations = await PathOperations.create({
       queryProcessor: this.queryProcessor,
       bindingsFactory,
-      context: this.logPlan(context, action),
+      context: plan?.context ?? context,
       spec: action.spec,
       actorName: this.name,
       logWarn: (message, data) => this.logWarn(context, message, data),
       onExpansionCardinality: cardinality => metadata.recordExpansion(cardinality),
     });
 
-    const traversal = new BfsPathTraversal(action.spec, operations, metadata);
+    const traversal = new BfsPathTraversal(action.spec, operations, metadata, stats);
     const pathStream = new PathResultIterator(
       traversal.run(),
       metadata,
@@ -79,7 +84,13 @@ export class ActorQueryPathBfs extends ActorQueryPath {
     // The logger belongs to the context this actor initialized, so flushing it is
     // this actor's responsibility — and on every way the stream can finish, not
     // only on one that runs to its end.
-    pathStream.onDone(() => context.get(KeysCore.log)?.flush());
+    pathStream.onDone(() => {
+      if (plan && stats) {
+        stats.closeDepth();
+        plan.logger.appendMetadata(plan.node, { traversal: stats.read() });
+      }
+      context.get(KeysCore.log)?.flush();
+    });
     linkAbortSignal(pathStream, context.get(KeysHttp.httpAbortSignal));
 
     return {
@@ -92,11 +103,14 @@ export class ActorQueryPathBfs extends ActorQueryPath {
   /**
    * Register the traversal in the physical query plan, so that the plan for each
    * depth is reported as a child of this path query rather than as a root.
+   *
+   * Returns nothing when no plan was asked for, which is also the signal that
+   * this traversal has nowhere to report measurements to.
    */
-  private logPlan(context: IActionContext, action: IActionQueryPath): IActionContext {
+  private logPlan(context: IActionContext, action: IActionQueryPath): IPathPlan | undefined {
     const logger: IPhysicalQueryPlanLogger | undefined = context.get(KeysInitQuery.physicalQueryPlanLogger);
     if (!logger) {
-      return context;
+      return undefined;
     }
     const node = { type: 'paths' };
     logger.logOperation(
@@ -111,8 +125,15 @@ export class ActorQueryPathBfs extends ActorQueryPath {
         ...action.spec.maxDepth === undefined ? {} : { maxDepth: action.spec.maxDepth },
       },
     );
-    return context.set(KeysInitQuery.physicalQueryPlanNode, node);
+    return { logger, node, context: context.set(KeysInitQuery.physicalQueryPlanNode, node) };
   }
+}
+
+/** The physical query plan node a traversal reports itself under. */
+interface IPathPlan {
+  logger: IPhysicalQueryPlanLogger;
+  node: unknown;
+  context: IActionContext;
 }
 
 export interface IActorQueryPathBfsArgs extends IActorQueryPathArgs {

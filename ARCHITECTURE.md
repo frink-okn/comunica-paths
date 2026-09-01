@@ -96,6 +96,54 @@ When END is a finite, `VALUES`-only target set, shortest traversal stops after e
 start/target pair has been settled. The winning depth is still consumed completely so all
 equal-length shortest paths are retained, but no deeper frontier is evaluated.
 
+### The final depth carries END
+
+At the last permitted depth, a candidate END does not match cannot contribute to a later
+frontier, because there is no later frontier. That depth is therefore evaluated as VIA joined
+with END, planned as one query the same way START and VIA are, so the endpoint constraint
+reaches a source in the same request as the frontier rather than filtering its answer
+afterwards. Endpoint candidates are always the target of a step — in both modes, and for a
+closing cycle too, since a cycle only arises when the step returns to the root — so constraining
+that variable drops nothing that could still have been emitted.
+
+END's own variables are independent of VIA's: a path solution exposes only the endpoint
+variables, and VIA's variables belong to a single step. A SPARQL join joins on every shared
+name, so an END that binds anything besides its node is scoped behind a sub-select projecting
+that node alone. A projection is SPARQL's own scoping boundary, so this needs no variable
+renaming and no disjointness analysis, and it applies to every END pattern. It also leaves the
+joined solutions carrying exactly VIA's variables, which is what keeps two things unchanged: the
+traversal reads the same solution shape at every depth, and the `DISTINCT` each evaluation is
+wrapped in collapses the duplicates an END with several solutions for one node would otherwise
+multiply a step by. Those solutions are then recovered by the ordinary END evaluation, over a
+candidate set the join has already reduced to real matches.
+
+When END binds nothing but its node, the sub-select is unnecessary and the pattern is joined as
+it stands. The joined solutions then carry every END solution there is, so that depth needs no
+END evaluation at all.
+
+### An `ALL` depth streams
+
+Shortest traversal keeps the depth barrier; `ALL` traversal does not need it, and does not take
+it. It keeps the depth *ordering* — a path is emitted no earlier than any shorter one — but
+within a depth it collects partial paths into batches, tests each batch's endpoints, and emits
+the completed paths among them while the depth is still arriving.
+
+That is what makes a depth interruptible. A satisfied `LIMIT`, or a consumer that stops reading,
+returns the traversal generator, which unwinds into the bindings stream it was consuming and
+destroys it — part-way through a depth rather than after it. Before this, one downstream request
+for a path could materialize an entire traversal depth.
+
+The batch is not a frontier chunk. The frontier still reaches Comunica whole, so the join actors
+still see its true cardinality and still chunk any pushdown with their own block sizes. The
+first batch of a depth is bounded by the number of paths the query could still emit, so a small
+`LIMIT` is answered from the first solutions of a depth; it then doubles up to a fixed ceiling,
+so a selective END does not turn into one evaluation per path.
+
+A partial path is held as a link to the partial path it extends, rather than as its own copy of
+the nodes and steps so far. An `ALL` traversal discovers far more partial paths than it emits,
+so extending one costs a single object and no copying, and the arrays a result carries are
+collected only for a path that is actually emitted.
+
 ## Results and metadata
 
 The bus returns a Comunica-shaped result: an `AsyncIterator` of paths, a `metadata()` accessor,
@@ -130,6 +178,14 @@ RDF-join mediator picked, rather than as a flat run of indistinguishable sibling
 that Comunica's explain actors sit on. `explainPaths` fills that role instead: it installs a
 `MemoryPhysicalQueryPlanLogger`, runs the traversal to completion, and returns the same
 `IQueryExplained` shape, in `parsed`, `physical`, or `physical-json` mode.
+
+An explanation also carries what the traversal measured about itself, under `traversal` on the
+path node: per depth, the frontier it was given, the VIA solutions it consumed, the partial
+paths it produced, the endpoints it tested and matched, the paths it emitted, and the time it
+spent awaiting sources, awaiting END, suspended on its consumer, and in its own bookkeeping.
+That last split is the point: a traversal that is slow because a source is slow and one that is
+slow because it is copying path state look identical from the outside. Measuring costs something
+per solution, so it happens only when a plan logger is installed.
 
 ## Blank nodes and quoted triples
 

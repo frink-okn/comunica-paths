@@ -8,7 +8,7 @@ const timeout = setTimeout(() => controller.abort(), 30_000);
 try {
   const engine = new QueryEngine();
   const paths = [];
-  for await (const path of engine.queryPathString(`
+  for await (const path of await engine.queryPathString(`
     PREFIX wd: <http://www.wikidata.org/entity/>
     PREFIX wdt: <http://www.wikidata.org/prop/direct/>
     PATHS SHORTEST

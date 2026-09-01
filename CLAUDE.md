@@ -36,6 +36,10 @@ Three stages, each feeding the next:
 
 Consequences worth knowing before editing:
 
+- `src/index.ts` is the Node barrel and `src/index-browser.ts` the browser one, reached through the
+  `browser` export condition. The browser barrel is the real list; `index.ts` re-exports it and
+  adds `QueryEngineFactory`, which pulls in Components.js and cannot load in a browser. A new
+  export goes in `index-browser.ts` unless it needs Node.
 - `dist/` and `engine-default.cjs` are gitignored; **`components/*.jsonld` is generated but tracked**.
   Changing an actor's constructor parameters regenerates those files, and they must be committed.
 - Every new export from `src/index.ts` that is not a Components.js component (types, helper classes,
@@ -81,6 +85,18 @@ it is in the wrong layer.
 - **`DISTINCT` is wrapped after planning, deliberately.** Planning it in pushes the pattern behind
   a sub-select that the frontier relation can no longer filter, making a source recompute its
   whole distinct edge set every depth.
+- **END is joined into the last permitted depth only.** At any earlier depth a node that is not
+  an endpoint is still a route to one, so constraining it would lose paths. An END binding
+  anything besides its node is scoped behind a sub-select projecting that node, so its variables
+  can never be joined to VIA's; do not replace that with a variable renamer, and do not drop it
+  on the grounds that a particular END happens not to clash.
+- **An `ALL` depth emits in batches and must stay interruptible.** The batch is an emission
+  granularity, not a frontier chunk: the frontier still goes to Comunica whole. Anything that
+  drains a depth before yielding — collecting a layer, sorting, counting — puts back the
+  behaviour that made `LIMIT` unable to stop work.
+- **A partial path shares its prefix.** `AllPathState` links to the state it extends; the nodes
+  and steps arrays are built only for a path that is emitted. Copying them per state is what
+  made a large depth expensive.
 - **`asynciterator` does not emit `end` on `destroy()`.** Cleanup that must run however a stream
   finishes goes through `PathResultIterator.onDone()`, never an `end` listener.
 
@@ -96,8 +112,14 @@ const { data } = await new QueryEngine().explainPaths(spec, { sources }, 'physic
 
 Use it to confirm which physical join a change produces (`bind-source` means the frontier reached
 the source as `VALUES`). For endpoint behaviour, stub `fetch` in the query context and assert on
-the SPARQL text — `test/actor-engine.test.mjs` has several examples, including the assertions that
-the pushed-down query contains `VALUES ?from` and no wrapping sub-`SELECT`.
+the SPARQL text — `test/actor-engine.test.mjs` and `test/final-depth.test.mjs` have several
+examples, including the assertions that the pushed-down query contains `VALUES ?from` and no
+wrapping sub-`SELECT`.
+
+`'physical-json'` additionally carries `traversal` on the path node: per-depth counters and the
+time split between awaiting sources and synchronous bookkeeping. Reach for it before guessing
+whether a slow traversal is spending its time in a source or in this package. It is only
+collected when a plan logger is installed, so it costs an ordinary query nothing.
 
 ## Tests
 

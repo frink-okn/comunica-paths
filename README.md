@@ -278,11 +278,37 @@ standard SPARQL configuration and adds only the path actor, its mediator, and a 
 init actor. A downstream engine configuration can replace or tune these components in the
 usual Components.js way.
 
+`QueryEngineFactory` reads that configuration from disk, so it is the one export a browser
+build cannot carry. The package declares a `browser` export condition that resolves to an entry
+point without it; bundlers pick that up on their own, and everything else — `QueryEngine`
+included — is exported from both. A browser application that reaches for `QueryEngineFactory`
+should use `new QueryEngine()` instead.
+
 An alternative path algorithm subclasses `ActorQueryPath`. Callers select one through the
 `algorithm` execution option, which the engine places in the query context under
 `KeysQueryPath.algorithm`; each actor must reject every value it does not implement in
 `test()`, so the bus never resolves competing implementations by completion timing. This is the
 same arrangement Comunica uses on its own query-process bus.
+
+## Performance notes
+
+Two things are worth knowing when a query is slower than expected.
+
+At the last depth a `MAX LENGTH` permits, the END pattern is evaluated together with that
+depth's traversal step, in one request, rather than filtering its answer afterwards. A bounded
+query with a selective END therefore asks a source for the edges that end where the query is
+going, instead of for every edge leaving the frontier. Give a query a `MAX LENGTH` it can
+actually reach and this applies; leave the traversal unbounded and there is no final depth for
+it to apply to.
+
+`ALL` execution emits paths while a depth is still arriving, so `LIMIT` stops the traversal
+part-way through a depth and destroys the requests behind it. `shortest` execution cannot: it
+has to see every predecessor at one distance before it can emit any path through them.
+
+`explainPaths(spec, context, 'physical-json')` reports what the traversal measured about itself
+under `traversal` — per depth, the frontier size, solutions consumed, partial paths produced,
+endpoints tested and matched, and the time split between waiting on sources and its own
+bookkeeping.
 
 ## Status
 

@@ -97,6 +97,15 @@ export class PathOperations {
     private readonly endPattern: IPathPattern | undefined,
     /** START joined with VIA, planned as one query, when START may be joined. */
     private readonly startViaPattern: IPathPattern | undefined,
+    /** VIA joined with END, planned as one query, for the final permitted depth. */
+    private readonly viaEndPattern: IPathPattern | undefined,
+    /** START, VIA, and END as one query, when the first depth is also the last. */
+    private readonly startViaEndPattern: IPathPattern | undefined,
+    /**
+     * Whether END binds nothing besides its node, so that a depth which joined
+     * END already holds every solution END produces.
+     */
+    public readonly joinedEndIsComplete: boolean,
     /** The source of a traversal step, and the node a START solution binds. */
     public readonly startVariable: RDF.Variable,
     /** The target of a traversal step, and the node an END solution binds. */
@@ -136,6 +145,15 @@ export class PathOperations {
     const endVariable = dataFactory.variable(spec.end.node.slice(1));
     const startVariable = dataFactory.variable(spec.start.node.slice(1));
 
+    /** Plan several clauses as one query, so that the optimizer groups them itself. */
+    const planJoined = async(...patterns: string[]): Promise<IPathPattern> => preparePattern(
+      args.queryProcessor,
+      algebraFactory,
+      context,
+      spec,
+      patterns.map(pattern => `{\n${pattern}\n}`).join('\n'),
+    );
+
     // Plan the first depth as one query when START projects nothing but its
     // node. A SPARQL join joins on every shared variable, so a START pattern
     // binding anything else could share a name with VIA and be joined to it,
@@ -146,13 +164,27 @@ export class PathOperations {
     const startVia = start &&
       start.variables.length === 1 &&
       start.variables[0]!.equals(startVariable) ?
-      await preparePattern(
-        args.queryProcessor,
-        algebraFactory,
-        context,
-        spec,
-        `{\n${spec.start.pattern!}\n}\n{\n${spec.via.pattern}\n}`,
-      ) :
+      await planJoined(spec.start.pattern!, spec.via.pattern) :
+      undefined;
+
+    // END as it is joined into the final depth's VIA evaluation.
+    //
+    // The same shared-variable problem applies to END, but END has a remedy
+    // START does not: its non-node variables are never joined to anything, so a
+    // sub-select projecting the endpoint node alone scopes them away. A
+    // projection is SPARQL's own scoping boundary, so this needs no renaming and
+    // no disjointness analysis, and applies to every END pattern. It also leaves
+    // the joined solutions with exactly VIA's variables, which is what keeps the
+    // traversal — and the `DISTINCT` every evaluation is wrapped in — unchanged:
+    // an END with several solutions for one node cannot multiply a traversal
+    // step, the way it would if its variables reached the join.
+    const endBindsOnlyNode = Boolean(end) &&
+      end!.variables.length === 1 &&
+      end!.variables[0]!.equals(endVariable);
+    const endFragment = end && spec.end.pattern?.trim() ?
+      (endBindsOnlyNode ?
+        spec.end.pattern :
+        `{ SELECT ${spec.end.node} WHERE {\n${spec.end.pattern}\n} }`) :
       undefined;
 
     return new PathOperations(
@@ -162,6 +194,13 @@ export class PathOperations {
       via,
       end,
       startVia,
+      endFragment ? await planJoined(spec.via.pattern, endFragment) : undefined,
+      // Only the first depth can also be the last, so this plan is worth making
+      // only then.
+      startVia && endFragment && spec.maxDepth === 1 ?
+        await planJoined(spec.start.pattern!, spec.via.pattern, endFragment) :
+        undefined,
+      endBindsOnlyNode,
       startVariable,
       endVariable,
       end ? readFixedNodes(end.operation, endVariable) : undefined,
@@ -182,8 +221,27 @@ export class PathOperations {
   }
 
   /** Evaluate the VIA pattern without any frontier constraint, as the first depth. */
-  public queryVia(depth: number): AsyncIterable<RDF.Bindings> {
-    return this.consume(this.viaPattern, this.viaPattern.operation, 'paths-via', depth);
+  public queryVia(depth: number, withEnd = false): AsyncIterable<RDF.Bindings> {
+    const pattern = this.viaPatternFor(withEnd);
+    return this.consume(pattern, pattern.operation, 'paths-via', depth);
+  }
+
+  /**
+   * Whether the final permitted depth may carry the END constraint into its VIA
+   * evaluation.
+   *
+   * At that depth a candidate END does not match cannot contribute to a later
+   * frontier, because there is no later frontier, so constraining the evaluation
+   * drops nothing that could still be emitted. Every other depth must expand the
+   * whole frontier, since a node that is not an endpoint is still a route to one.
+   */
+  public get canJoinEnd(): boolean {
+    return this.viaEndPattern !== undefined;
+  }
+
+  /** Whether the joined first depth may also carry the END constraint. */
+  public get canJoinStartEnd(): boolean {
+    return this.startViaEndPattern !== undefined;
   }
 
   /**
@@ -214,13 +272,24 @@ export class PathOperations {
    * join mediator as two separately scoped entries and can never become one
    * source request — the very thing the join is for.
    */
-  public queryViaFromStart(): AsyncIterable<RDF.Bindings> {
-    return this.consume(this.startViaPattern!, this.startViaPattern!.operation, 'paths-via', 1);
+  public queryViaFromStart(withEnd = false): AsyncIterable<RDF.Bindings> {
+    const pattern = withEnd ? this.startViaEndPattern! : this.startViaPattern!;
+    return this.consume(pattern, pattern.operation, 'paths-via', 1);
   }
 
   /** Evaluate the VIA pattern for every frontier node in one mediated join. */
-  public queryViaFrom(terms: readonly RDF.Term[], depth: number): AsyncIterable<RDF.Bindings> {
-    return this.queryConstrained(this.viaPattern, this.startVariable, terms, 'paths-via', depth);
+  public queryViaFrom(
+    terms: readonly RDF.Term[],
+    depth: number,
+    withEnd = false,
+  ): AsyncIterable<RDF.Bindings> {
+    return this.queryConstrained(
+      this.viaPatternFor(withEnd),
+      this.startVariable,
+      terms,
+      'paths-via',
+      depth,
+    );
   }
 
   /** Evaluate the END pattern for every candidate endpoint in one mediated join. */
@@ -234,6 +303,11 @@ export class PathOperations {
       stream.destroy(cause);
     }
     this.activeStreams.clear();
+  }
+
+  /** The VIA plan to evaluate, with or without the END constraint joined into it. */
+  private viaPatternFor(withEnd: boolean): IPathPattern {
+    return withEnd ? this.viaEndPattern! : this.viaPattern;
   }
 
   /**
