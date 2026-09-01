@@ -3,7 +3,7 @@
     "https://linkedsoftwaredependencies.org/bundles/npm/componentsjs/^6.0.0/components/context.jsonld",
     {
       "npmd": "https://linkedsoftwaredependencies.org/bundles/npm/",
-      "cpaths": "npmd:comunica-paths/^0.0.0/",
+      "cpaths": "npmd:@frink-okn/comunica-paths/^0.0.0/",
       "ActorQueryPath": {
         "@id": "cpaths:components/ActorQueryPath.jsonld#ActorQueryPath",
         "@prefix": true,

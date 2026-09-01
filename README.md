@@ -11,7 +11,7 @@ The query syntax follows the `PATHS` [SPARQL extension implemented by Stardog](h
 The default export surface includes a normal Comunica query engine with PATHS support added:
 
 ```ts
-import { QueryEngine } from 'comunica-paths';
+import { QueryEngine } from '@frink-okn/comunica-paths';
 
 const engine = new QueryEngine();
 const paths = await engine.queryPathString(`
@@ -118,7 +118,7 @@ frontier size and chooses the physical join itself — bind, hash, nested-loop, 
 that pushes the frontier into the source request.
 
 ```ts
-import { QueryEngine } from 'comunica-paths';
+import { QueryEngine } from '@frink-okn/comunica-paths';
 
 const paths = await new QueryEngine().queryPaths(query, {
   sources: [ 'https://example.org/data.ttl' ],
@@ -265,7 +265,7 @@ is handed to Comunica. The engine sees only the standard START, END, and VIA gra
 configurations, use `QueryEngineFactory`:
 
 ```ts
-import { QueryEngineFactory } from 'comunica-paths';
+import { QueryEngineFactory } from '@frink-okn/comunica-paths';
 
 const engine = await new QueryEngineFactory().create({
   configPath: '/absolute/path/to/config.json',

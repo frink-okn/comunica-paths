@@ -1,10 +1,10 @@
 {
   "@context": [
-    "https://linkedsoftwaredependencies.org/bundles/npm/comunica-paths/^0.0.0/components/context.jsonld"
+    "https://linkedsoftwaredependencies.org/bundles/npm/@frink-okn/comunica-paths/^0.0.0/components/context.jsonld"
   ],
-  "@id": "npmd:comunica-paths",
+  "@id": "npmd:@frink-okn/comunica-paths",
   "@type": "Module",
-  "requireName": "comunica-paths",
+  "requireName": "@frink-okn/comunica-paths",
   "import": [
     "cpaths:components/ActorQueryPath.jsonld",
     "cpaths:components/ActorQueryPathBfs.jsonld",
