@@ -96,6 +96,8 @@ export class BfsPathTraversal {
   private readonly distances = new TermMap<RDF.Term, TermMap<RDF.Term, number>>();
   private readonly predecessors = new TermMap<RDF.Term, TermMap<RDF.Term, Predecessor[]>>();
   private readonly cycleDistances = new TermMap<RDF.Term, number>();
+  /** Endpoint nodes the depth in progress has already counted. Only while measuring. */
+  private countedEndpoints: TermSet<RDF.Term> | undefined;
 
   public constructor(
     private readonly spec: PathQuerySpec,
@@ -159,7 +161,7 @@ export class BfsPathTraversal {
     } else {
       depth = 1;
       const joinedEnd = this.joinsEndAt(depth, true);
-      this.stats?.openDepth(depth, 0, 0, joinedEnd);
+      this.openDepth(depth, 0, 0, joinedEnd);
       const firstLayer = await this.expandShortest(undefined, depth, joinedEnd);
       frontier = firstLayer.frontier;
       yield* this.emitShortestLayer(firstLayer, depth, joinedEnd);
@@ -175,7 +177,7 @@ export class BfsPathTraversal {
       }
       const nextDepth = depth + 1;
       const joinedEnd = this.joinsEndAt(nextDepth, false);
-      this.stats?.openDepth(nextDepth, frontier.size, frontier.size, joinedEnd);
+      this.openDepth(nextDepth, frontier.size, countShortestStates(frontier), joinedEnd);
       const layer = await this.expandShortest(frontier, nextDepth, joinedEnd);
       yield* this.emitShortestLayer(layer, nextDepth, joinedEnd);
       frontier = layer.frontier;
@@ -278,12 +280,7 @@ export class BfsPathTraversal {
   ): AsyncGenerator<PathResult, AllFrontier, undefined> {
     const next: AllFrontier = new TermMap<RDF.Term, AllPathState[]>();
     const joinedEnd = this.joinsEndAt(depth, frontier === undefined);
-    this.stats?.openDepth(
-      depth,
-      frontier?.size ?? 0,
-      frontier ? countAllStates(frontier) : 0,
-      joinedEnd,
-    );
+    this.openDepth(depth, frontier?.size ?? 0, frontier ? countAllStates(frontier) : 0, joinedEnd);
     let batch: AllPathState[] = [];
     // A query that only wants a few paths should not wait for a full batch to
     // find them, but a candidate need not match END, so a batch sized to the
@@ -296,7 +293,7 @@ export class BfsPathTraversal {
       depth,
       joinedEnd,
     ))) {
-      const started = now();
+      let started = now();
       const { from, to } = this.requireStep(bindings);
       if (joinedEnd && this.operations.joinedEndIsComplete) {
         this.recordJoinedEndpoint(to, bindings);
@@ -315,13 +312,19 @@ export class BfsPathTraversal {
         }
         batch.push(state);
         this.stats?.count('statesOut');
+        // Checked here rather than once per solution: an edge into a node many
+        // partial paths have converged on extends every one of them, so waiting
+        // until the solution is finished would let a single edge build a batch
+        // of any size — which is the unbounded span batching exists to prevent.
+        if (batch.length >= target) {
+          this.stats?.time('workMs', started);
+          yield* this.emitAllBatch(batch, depth, joinedEnd);
+          batch = [];
+          target = Math.min(ENDPOINT_BATCH, target * 2);
+          started = now();
+        }
       }
       this.stats?.time('workMs', started);
-      if (batch.length >= target) {
-        yield* this.emitAllBatch(batch, depth, joinedEnd);
-        batch = [];
-        target = Math.min(ENDPOINT_BATCH, target * 2);
-      }
     }
     yield* this.emitAllBatch(batch, depth, joinedEnd);
     return next;
@@ -350,6 +353,39 @@ export class BfsPathTraversal {
       throw new InvalidPathQueryError('VIA produced a start node outside the supplied frontier');
     }
     return prefixes;
+  }
+
+  /**
+   * Begin measuring a depth.
+   *
+   * The endpoint counters are per depth rather than per batch, and a streaming
+   * depth can meet one endpoint in several batches, so the nodes it has already
+   * counted are remembered for as long as it runs.
+   */
+  private openDepth(depth: number, frontierNodes: number, statesIn: number, joinedEnd: boolean): void {
+    if (!this.stats) {
+      return;
+    }
+    this.countedEndpoints = new TermSet<RDF.Term>();
+    this.stats.openDepth(depth, frontierNodes, statesIn, joinedEnd);
+  }
+
+  /** Count the endpoint nodes of one batch that this depth has not counted yet. */
+  private countEndpoints(candidates: TermSet<RDF.Term>, matched: (node: RDF.Term) => boolean): void {
+    const counted = this.countedEndpoints;
+    if (!counted) {
+      return;
+    }
+    for (const candidate of candidates) {
+      if (counted.has(candidate)) {
+        continue;
+      }
+      counted.add(candidate);
+      this.stats!.count('endpointCandidates');
+      if (matched(candidate)) {
+        this.stats!.count('endpointMatches');
+      }
+    }
   }
 
   /** Record a root the first depth discovered, however that depth was evaluated. */
@@ -468,8 +504,10 @@ export class BfsPathTraversal {
       if (knownCycleDistance === undefined) {
         this.cycleDistances.set(root, depth);
         layer.addCycle(root, predecessor);
+        this.stats?.count('statesOut');
       } else if (knownCycleDistance === depth) {
         layer.addCycle(root, predecessor);
+        this.stats?.count('statesOut');
       }
       return;
     }
@@ -483,6 +521,7 @@ export class BfsPathTraversal {
       rootDistances.set(to, depth);
       getOrCreateTermMap(this.predecessors, root).set(to, [ predecessor ]);
       layer.addState(root, to);
+      this.stats?.count('statesOut');
     } else if (knownDistance === depth) {
       getOrCreateTermMap(this.predecessors, root).get(to)!.push(predecessor);
     }
@@ -545,16 +584,14 @@ export class BfsPathTraversal {
       for (const candidate of candidates) {
         matches.set(candidate, {});
       }
-      this.stats?.count('endpointCandidates', candidates.size);
-      this.stats?.count('endpointMatches', candidates.size);
+      this.countEndpoints(candidates, () => true);
       return matches;
     }
 
     if (joinedEnd && this.operations.joinedEndIsComplete) {
       // The evaluation that produced these candidates applied END and carried its
       // solutions, so every candidate is a match and nothing more has to be asked.
-      this.stats?.count('endpointCandidates', candidates.size);
-      this.stats?.count('endpointMatches', candidates.size);
+      this.countEndpoints(candidates, () => true);
       return this.endpointCache;
     }
 
@@ -571,12 +608,7 @@ export class BfsPathTraversal {
         this.endpointCache.set(term, { bindings: [ bindings ]});
       }
     }
-    this.stats?.count('endpointCandidates', candidates.size);
-    for (const candidate of candidates) {
-      if (this.endpointCache.get(candidate)) {
-        this.stats?.count('endpointMatches');
-      }
-    }
+    this.countEndpoints(candidates, candidate => Boolean(this.endpointCache.get(candidate)));
     return this.endpointCache;
   }
 
@@ -778,6 +810,20 @@ function addAllState(frontier: AllFrontier, state: AllPathState): void {
   } else {
     frontier.set(state.current, [ state ]);
   }
+}
+
+/**
+ * The number of partial paths a shortest frontier holds.
+ *
+ * One node can be on the way from several roots, and each of those is its own
+ * partial path, so this is not the number of nodes in the frontier.
+ */
+function countShortestStates(frontier: TermMap<RDF.Term, TermSet<RDF.Term>>): number {
+  let total = 0;
+  for (const roots of frontier.values()) {
+    total += roots.size;
+  }
+  return total;
 }
 
 /** The number of partial paths a frontier holds, across every node in it. */

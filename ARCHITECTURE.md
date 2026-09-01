@@ -137,7 +137,12 @@ The batch is not a frontier chunk. The frontier still reaches Comunica whole, so
 still see its true cardinality and still chunk any pushdown with their own block sizes. The
 first batch of a depth is bounded by the number of paths the query could still emit, so a small
 `LIMIT` is answered from the first solutions of a depth; it then doubles up to a fixed ceiling,
-so a selective END does not turn into one evaluation per path.
+so a selective END does not turn into one evaluation per path. The bound is enforced as each
+partial path is extended rather than once per solution, because one edge into a node many
+partial paths have converged on extends every one of them.
+
+The END join is planned only for a traversal with a bound it can reach. An unbounded one has no
+final depth to apply it at, and is not made to pay for the plan.
 
 A partial path is held as a link to the partial path it extends, rather than as its own copy of
 the nodes and steps so far. An `ALL` traversal discovers far more partial paths than it emits,

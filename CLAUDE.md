@@ -93,7 +93,9 @@ it is in the wrong layer.
 - **An `ALL` depth emits in batches and must stay interruptible.** The batch is an emission
   granularity, not a frontier chunk: the frontier still goes to Comunica whole. Anything that
   drains a depth before yielding — collecting a layer, sorting, counting — puts back the
-  behaviour that made `LIMIT` unable to stop work.
+  behaviour that made `LIMIT` unable to stop work. The batch bound has to hold *during* prefix
+  multiplication as well: one edge into a node many partial paths converged on extends every one
+  of them, so a check that only runs between VIA solutions bounds nothing.
 - **A partial path shares its prefix.** `AllPathState` links to the state it extends; the nodes
   and steps arrays are built only for a path that is emitted. Copying them per state is what
   made a large depth expensive.

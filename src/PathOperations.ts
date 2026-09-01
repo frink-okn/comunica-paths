@@ -187,6 +187,10 @@ export class PathOperations {
         `{ SELECT ${spec.end.node} WHERE {\n${spec.end.pattern}\n} }`) :
       undefined;
 
+    // Only a traversal with a bound it can reach has a final depth to join END
+    // into, so an unbounded one is not made to pay for a plan it can never use.
+    const bounded = spec.maxDepth !== undefined && spec.maxDepth >= 1;
+
     return new PathOperations(
       args,
       dataFactory,
@@ -194,7 +198,7 @@ export class PathOperations {
       via,
       end,
       startVia,
-      endFragment ? await planJoined(spec.via.pattern, endFragment) : undefined,
+      endFragment && bounded ? await planJoined(spec.via.pattern, endFragment) : undefined,
       // Only the first depth can also be the last, so this plan is worth making
       // only then.
       startVia && endFragment && spec.maxDepth === 1 ?
