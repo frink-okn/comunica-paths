@@ -1,6 +1,6 @@
 {
   "name": "@frink-okn/comunica-paths",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Streaming path queries over one or more RDF sources through Comunica",
   "license": "MIT",
   "type": "commonjs",
