@@ -273,10 +273,12 @@ const engine = await new QueryEngineFactory().create({
 });
 ```
 
-The shipped [`config/config-default.json`](./config/config-default.json) imports Comunica's
-standard SPARQL configuration and adds only the path actor, its mediator, and a path-enabled
-init actor. A downstream engine configuration can replace or tune these components in the
-usual Components.js way.
+The shipped [`config/config-default.json`](./config/config-default.json) imports the same
+versioned SPARQL configuration as `@comunica/query-sparql`, then adds only the path actor, its
+mediator, and a path-enabled init actor. A regression test compares the compiled component
+graph with Comunica's stock engine so dependency upgrades cannot silently make the base
+configurations diverge. A downstream engine configuration can replace or tune these components
+in the usual Components.js way.
 
 `QueryEngineFactory` reads that configuration from disk, so it is the one export a browser
 build cannot carry. The package declares a `browser` export condition that resolves to an entry
